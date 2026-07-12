@@ -32,7 +32,7 @@ MIN_OS=$(xcrun vtool -show-build "$APP/Contents/MacOS/workdpace" | awk '/minos/{
 
 SMOKE=$("$APP/Contents/MacOS/workdpace" --smoke)
 case "$SMOKE" in PASS:*) ;; *) printf 'FAIL: smoke test did not report PASS\n%s\n' "$SMOKE" >&2; exit 1;; esac
-UI_TEST=$("$APP/Contents/MacOS/workdpace" --ui-test)
+UI_TEST=$("$APP/Contents/MacOS/workdpace" --ui-test -AppleShowScrollBars Always)
 case "$UI_TEST" in PASS:*) ;; *) printf 'FAIL: UI test did not report PASS\n%s\n' "$UI_TEST" >&2; exit 1;; esac
 
 printf '%s\n' "$SMOKE"

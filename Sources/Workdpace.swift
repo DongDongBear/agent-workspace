@@ -964,11 +964,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
                   const item = current();
                   const sidebar = document.querySelector('.sidebar');
                   const conversation = document.querySelector('[data-conversation]');
+                  const historyViewport = document.querySelector('[data-history-scroll]');
                   const historyDocument = document.querySelector('[data-history]');
                   const titlebar = document.querySelector('.titlebar');
                   const selectedRow = document.querySelector('.session-item.selected');
                   const sidebarRect = sidebar.getBoundingClientRect();
                   const conversationRect = conversation.getBoundingClientRect();
+                  const historyViewportRect = historyViewport.getBoundingClientRect();
                   const historyRect = historyDocument.getBoundingClientRect();
                   const rowRects = [...document.querySelectorAll('.session-select')].map(row => row.getBoundingClientRect());
                   const selectedRect = selectedRow.getBoundingClientRect();
@@ -988,7 +990,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
                     && sidebarRect.width <= 320
                     && Math.abs(sidebarRect.right - conversationRect.left) <= 2
                     && conversationRect.width > sidebarRect.width * 2
-                    && historyRect.width >= conversationRect.width - 2
+                    && Math.abs(historyViewportRect.width - conversationRect.width) <= 2
+                    && Math.abs(historyRect.width - historyViewport.clientWidth) <= 2
                     && rowRects.length === state.sessions.length
                     && rowRects.every(rect => rect.height <= 56)
                     && titlebar.getBoundingClientRect().height <= 48
