@@ -1,0 +1,19 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: brew install tmux ripgrep
+      - run: bash Tests/sesslist.bash
+      - run: bash Tests/app.bash

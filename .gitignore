@@ -1,0 +1,24 @@
+.DS_Store
+
+# Swift and native build products
+.build/
+DerivedData/
+*.app
+*.dSYM
+*.o
+*.swiftmodule
+*.swiftdoc
+*.swiftsourceinfo
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+.claude/
+
+# Editor and temporary files
+*.log
+*.tmp
+*~
+.idea/
+.vscode/

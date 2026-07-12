@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' workdpace:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'none'">
+  <title>workdpace</title>
+  <style>
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    :root {
+      color-scheme: light;
+      --blue: #0075de;
+      --blue-active: #005bab;
+      --selected: #e9e8e4;
+      --selected-hover: #e5e3e0;
+      --canvas: #f6f5f4;
+      --surface: #ffffff;
+      --ink: #000000;
+      --secondary: #31302e;
+      --muted: #615d59;
+      --faint: #a39e98;
+      --hairline: #e6e6e6;
+      --claude: #d77655;
+      --success: #1aae39;
+      --danger: #c4372c;
+      --shadow: 0 8px 24px rgb(0 0 0 / .08), 0 1px 4px rgb(0 0 0 / .05);
+    }
+    body {
+      color: var(--secondary);
+      background: var(--canvas);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input, textarea { color: inherit; font: inherit; }
+    button { cursor: default; }
+    button:disabled { opacity: .42; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible {
+      outline: 2px solid var(--blue);
+      outline-offset: 2px;
+    }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    .app { width: 100%; height: 100%; display: grid; grid-template-rows: 44px minmax(0, 1fr); background: var(--surface); }
+
+    .titlebar { -webkit-app-region: drag; display: grid; grid-template-columns: 320px minmax(0, 1fr); border-bottom: 1px solid var(--hairline); user-select: none; }
+    .titlebar button { -webkit-app-region: no-drag; }
+    .titlebar-side { min-width: 0; display: flex; align-items: center; padding: 0 12px 0 80px; border-right: 1px solid var(--hairline); background: var(--canvas); }
+    .brand { overflow: hidden; color: var(--ink); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .titlebar-main { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px; background: var(--surface); }
+    .app-context { min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .spacer { flex: 1; }
+    .utility-button, .icon-button, .new-button, .send-button, .dialog-button {
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+    .utility-button { height: 28px; padding: 0 9px; color: var(--muted); font-size: 11px; }
+    .utility-button:hover, .icon-button:hover, .dialog-button:hover { background: var(--canvas); }
+    .kbd { color: var(--faint); font-size: 10px; }
+
+    .workspace { min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr); }
+    .sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-right: 0; background: var(--canvas); box-shadow: inset -1px 0 var(--hairline); }
+    .sidebar-head { height: 48px; flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px 4px 16px; }
+    .sidebar-title { color: var(--ink); font-size: 13px; font-weight: 600; }
+    .session-count { color: var(--faint); font-size: 11px; }
+    .new-button { width: 28px; height: 28px; display: grid; place-items: center; color: white; border-color: var(--blue); background: var(--blue); }
+    .new-button:hover { background: var(--blue-active); }
+    .new-button svg { width: 13px; height: 13px; }
+    .search-wrap { position: relative; flex: none; padding: 4px 12px 8px; }
+    .search-wrap svg { position: absolute; top: 13px; left: 21px; width: 13px; height: 13px; color: var(--faint); pointer-events: none; }
+    .search { width: 100%; height: 32px; padding: 0 32px; color: var(--ink); border: 1px solid #dddddd; border-radius: 4px; outline: 0; background: var(--surface); font-size: 12px; }
+    .search::placeholder { color: var(--faint); }
+    .search:focus { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+    .session-list { min-height: 0; flex: 1; padding: 2px 8px 16px; overflow: auto; }
+    .group-label { position: sticky; z-index: 2; top: 0; margin: 7px 0 2px; padding: 5px 8px 3px; overflow: hidden; color: var(--muted); background: var(--canvas); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .session-item { position: relative; min-width: 0; height: 48px; display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: start; margin: 1px 0; padding-right: 4px; border-radius: 6px; background: transparent; box-shadow: none; }
+    .session-item:hover { background: rgb(55 53 47 / 4.5%); }
+    .session-item.selected { background: var(--selected); box-shadow: none; }
+    .session-item.selected::before { content: ""; position: absolute; top: 17px; left: 2px; width: 2px; height: 14px; border-radius: 2px; background: var(--muted); }
+    .session-item.selected:hover { background: var(--selected-hover); }
+    .session-select { min-width: 0; width: 100%; height: 48px; display: grid; grid-template-columns: 20px minmax(0, 1fr) 44px; grid-template-rows: 20px 14px; column-gap: 8px; align-content: center; padding: 7px 4px 7px 8px; overflow: hidden; color: inherit; border: 0; border-radius: 6px; background: transparent; text-align: left; }
+    .session-select:focus-visible { outline: 2px solid rgb(0 117 222 / 48%); outline-offset: -2px; }
+    .provider-icon { width: 20px; height: 20px; display: inline-grid; place-items: center; flex: none; color: var(--ink); }
+    .provider-icon svg { width: 18px; height: 18px; fill: currentColor; }
+    .provider-icon.provider-claude { color: var(--claude); }
+    .provider-icon.provider-codex { color: var(--ink); }
+    .session-select > .provider-icon { grid-column: 1; grid-row: 1; align-self: center; }
+    .session-select > .provider-icon svg { width: 16px; height: 16px; display: block; }
+    .session-title { grid-column: 2 / 4; grid-row: 1; align-self: center; min-width: 0; overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 550; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
+    .session-item.selected .session-title { font-weight: 550; }
+    .session-status { grid-column: 2; grid-row: 2; min-width: 0; display: flex; align-items: center; gap: 5px; overflow: hidden; color: var(--muted); font-size: 11px; line-height: 14px; white-space: nowrap; }
+    .session-time { grid-column: 3; grid-row: 2; justify-self: end; color: var(--muted); font-size: 11px; line-height: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .status-dot { width: 5px; height: 5px; flex: none; border-radius: 50%; background: var(--success); }
+    .status-dot.working { background: var(--blue); }
+    .session-menu-trigger { position: static; width: 28px; height: 28px; display: grid; place-items: center; align-self: start; margin-top: 3px; padding: 0; color: var(--muted); border: 0; border-radius: 5px; opacity: 0; background: transparent; }
+    .session-item:hover .session-menu-trigger, .session-item:focus-within .session-menu-trigger, .session-menu-trigger[aria-expanded="true"] { opacity: 1; }
+    .session-item.selected .session-menu-trigger { opacity: .5; }
+    .session-item.selected:hover .session-menu-trigger, .session-item.selected:focus-within .session-menu-trigger, .session-menu-trigger[aria-expanded="true"] { opacity: 1; }
+    .session-menu-trigger:hover { color: var(--ink); background: rgb(55 53 47 / 8%); }
+    .session-menu-trigger svg { width: 14px; height: 14px; display: block; }
+    .conversation { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--surface); }
+    .conversation-head { height: 56px; flex: none; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; grid-template-rows: 20px 15px; column-gap: 10px; align-content: center; padding: 0 20px; border-bottom: 1px solid var(--hairline); }
+    .conversation-head > .provider-icon { grid-column: 1; grid-row: 1; align-self: center; }
+    .conversation-title-block { grid-column: 2; grid-row: 1 / 3; min-width: 0; display: grid; grid-template-rows: 20px 15px; }
+    .conversation-title { overflow: hidden; color: var(--ink); font-size: 14px; font-weight: 600; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
+    .conversation-meta { overflow: hidden; margin: 0; color: var(--muted); font-size: 11.5px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
+    .conversation-state { grid-column: 3; grid-row: 1; align-self: center; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; }
+    .history-stage { position: relative; min-height: 0; flex: 1; }
+    .history-viewport { width: 100%; height: 100%; overflow: auto; background: var(--surface); }
+    .history-document { width: 100%; min-height: 100%; padding: 22px 36px 48px; }
+    .message { width: 100%; max-width: 920px; margin: 0 auto 18px; }
+    .message.continued { margin-top: -8px; }
+    .message-meta { display: flex; align-items: center; gap: 7px; min-height: 18px; margin-bottom: 5px; color: var(--muted); font-size: 11.5px; }
+    .message-meta .provider-icon { width: 16px; height: 16px; }
+    .message-meta .provider-icon svg { width: 14px; height: 14px; }
+    .message-author { color: var(--secondary); font-weight: 600; }
+    .message-time { margin-left: auto; }
+    .message-text { color: var(--secondary); font-size: 14.5px; line-height: 1.58; overflow-wrap: anywhere; }
+    .message.user .message-text { padding: 11px 14px; border-radius: 5px; background: var(--canvas); }
+    .message-text > :first-child { margin-top: 0; }
+    .message-text > :last-child { margin-bottom: 0; }
+    .message-text p { margin: 0 0 11px; }
+    .message-text h1, .message-text h2, .message-text h3, .message-text h4, .message-text h5, .message-text h6 { margin: 18px 0 7px; color: var(--ink); font-weight: 650; line-height: 1.35; }
+    .message-text h1 { font-size: 18px; } .message-text h2 { font-size: 16px; } .message-text h3 { font-size: 15px; }
+    .message-text h4, .message-text h5, .message-text h6 { font-size: 13.5px; }
+    .message-text strong { color: var(--ink); font-weight: 650; }
+    .message-text a { color: var(--blue); text-decoration: none; border-bottom: 1px solid rgb(0 117 222 / .28); cursor: pointer; }
+    .message-text a:hover { border-bottom-color: var(--blue); }
+    .message-text code { padding: 1px 4px; border-radius: 4px; background: var(--canvas); font: 11.5px/1.55 "SF Mono", "Maple Mono NF CN", ui-monospace, monospace; }
+    .message-text pre.md-code { margin: 11px 0 14px; padding: 12px 14px; overflow: auto; color: var(--secondary); border: 1px solid var(--hairline); border-radius: 5px; background: var(--canvas); white-space: pre; tab-size: 2; }
+    .message-text pre.md-code code { padding: 0; border-radius: 0; background: transparent; font-size: 12px; }
+    .message.user .message-text pre.md-code, .message.user .message-text code { background: var(--surface); }
+    .message.user .message-text pre.md-code code { background: transparent; }
+    .message-text ul, .message-text ol { margin: 8px 0 12px; padding-left: 22px; }
+    .message-text li { padding-left: 2px; }
+    .message-text li + li { margin-top: 4px; }
+    .message-text blockquote { margin: 11px 0 14px; padding-left: 12px; color: var(--muted); border-left: 3px solid var(--hairline); }
+    .message-text hr { height: 0; margin: 18px 0; border: 0; border-top: 1px solid var(--hairline); }
+    .message-text .table-wrap { margin: 11px 0 14px; overflow-x: auto; }
+    .message-text table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; }
+    .message-text th, .message-text td { padding: 7px 9px; border: 1px solid var(--hairline); text-align: left; vertical-align: top; }
+    .message-text th { color: var(--ink); background: var(--canvas); font-weight: 600; }
+    .message.user .message-text th { background: var(--surface); }
+    .message.terminal { padding-left: 14px; border-left: 2px solid var(--hairline); }
+    .message.terminal pre { margin: 0; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; font: 12.5px/1.6 "SF Mono", "Maple Mono NF CN", ui-monospace, monospace; }
+    .history-empty { display: grid; min-height: 260px; place-items: center; color: var(--faint); font-size: 12px; text-align: center; }
+    .history-loading { max-width: 760px; margin: 18px auto; }
+    .loading-line { width: 68%; height: 9px; margin: 12px 0; border-radius: 4px; background: var(--canvas); }
+    .loading-line:nth-child(2) { width: 88%; }
+    .loading-line:nth-child(3) { width: 52%; }
+    .latest-button { position: absolute; z-index: 4; right: 22px; bottom: 14px; height: 32px; padding: 0 12px; color: var(--blue); border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); box-shadow: 0 3px 10px rgb(0 0 0 / .08); font-size: 11px; font-weight: 500; }
+    .latest-button:hover { background: var(--canvas); }
+
+    .composer-dock { flex: none; padding: 8px 20px; border-top: 1px solid var(--hairline); background: var(--surface); }
+    .composer { display: grid; grid-template-columns: 20px minmax(0, 1fr) 40px; gap: 10px; align-items: end; min-height: 58px; padding: 8px 8px 8px 12px; border: 1px solid #dddddd; border-radius: 8px; background: var(--surface); }
+    .composer:focus-within { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+    .composer > .provider-icon { align-self: start; margin-top: 10px; }
+    .composer textarea { min-height: 40px; max-height: 128px; padding: 9px 0 7px; resize: none; overflow: auto; color: var(--ink); border: 0; outline: 0; background: transparent; font-size: 14px; line-height: 1.5; }
+    .composer textarea::placeholder { color: var(--faint); }
+    .send-button { width: 40px; height: 40px; display: grid; place-items: center; padding: 0; color: white; border-color: var(--blue); border-radius: 8px; background: var(--blue); }
+    .send-button:hover { background: var(--blue-active); }
+    .send-button svg { width: 15px; height: 15px; }
+
+    .menu-layer { position: fixed; z-index: 40; inset: 0; }
+    .session-menu { position: fixed; width: 160px; padding: 4px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); }
+    .menu-item { width: 100%; height: 32px; padding: 0 9px; color: var(--danger); border: 0; border-radius: 5px; background: transparent; font-size: 12px; text-align: left; }
+    .menu-item:hover, .menu-item:focus { background: #fbefed; outline: 0; }
+    .scrim { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(0 0 0 / .16); }
+    .dialog { width: min(410px, 100%); padding: 20px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+    .dialog h2 { margin: 0; color: var(--ink); font-size: 17px; font-weight: 650; line-height: 1.3; }
+    .dialog p { margin: 9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+    .dialog-button { min-height: 34px; padding: 0 12px; font-size: 12px; }
+    .dialog-button.danger { color: white; border-color: var(--danger); background: var(--danger); }
+    .dialog-button.danger:hover { background: #a92d24; }
+    .toast { position: fixed; z-index: 70; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 9px 12px; color: white; border-radius: 8px; background: var(--secondary); box-shadow: var(--shadow); font-size: 11px; }
+    .empty-sidebar { padding: 28px 14px; color: var(--faint); font-size: 11.5px; line-height: 1.5; text-align: center; }
+
+    @media (max-width: 1024px) {
+      .titlebar, .workspace { grid-template-columns: 280px minmax(0, 1fr); }
+      .history-document { padding-inline: 28px; }
+    }
+    @media (max-width: 700px) {
+      .titlebar, .workspace { grid-template-columns: 1fr; }
+      .titlebar-main, .conversation { display: none; }
+      .titlebar-side { border-right: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 1ms !important; animation-duration: 1ms !important; }
+    }
+    @media (prefers-contrast: more) {
+      :root { --hairline: #8a8885; }
+      .session-item.selected { outline: 2px solid var(--blue); outline-offset: -2px; }
+    }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script>
+    const state = {
+      cwd: '', sessions: [], selected: null, query: '', loading: true, busy: false,
+      drafts: {}, histories: {}, menu: null, confirm: null, toast: '', promptSending: false,
+    };
+    const historyInFlight = new Set();
+    let toastTimer;
+    let composingSearch = false;
+
+    const escapeHTML = value => String(value ?? '').replace(/[&<>'"]/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    })[char]);
+
+    const claudePath = 'm3.127 10.604 3.135-1.76.053-.153-.053-.085H6.11l-.525-.032-1.791-.048-1.554-.065-1.505-.08-.38-.081L0 7.832l.036-.234.32-.214.455.04 1.009.069 1.513.105 1.097.064 1.626.17h.259l.036-.105-.089-.065-.068-.064-1.566-1.062-1.695-1.121-.887-.646-.48-.327-.243-.306-.104-.67.435-.48.585.04.15.04.593.456 1.267.981 1.654 1.218.242.202.097-.068.012-.049-.109-.181-.9-1.626-.96-1.655-.428-.686-.113-.411a2 2 0 0 1-.068-.484l.496-.674L4.446 0l.662.089.279.242.411.94.666 1.48 1.033 2.014.302.597.162.553.06.17h.105v-.097l.085-1.134.157-1.392.154-1.792.052-.504.25-.605.497-.327.387.186.319.456-.045.294-.19 1.23-.37 1.93-.243 1.29h.142l.161-.16.654-.868 1.097-1.372.484-.545.565-.601.363-.287h.686l.505.751-.226.775-.707.895-.585.759-.839 1.13-.524.904.048.072.125-.012 1.897-.403 1.024-.186 1.223-.21.553.258.06.263-.218.536-1.307.323-1.533.307-2.284.54-.028.02.032.04 1.029.098.44.024h1.077l2.005.15.525.346.315.424-.053.323-.807.411-3.631-.863-.872-.218h-.12v.073l.726.71 1.331 1.202 1.667 1.55.084.383-.214.302-.226-.032-1.464-1.101-.565-.497-1.28-1.077h-.084v.113l.295.432 1.557 2.34.08.718-.112.234-.404.141-.444-.08-.911-1.28-.94-1.44-.759-1.291-.093.053-.448 4.821-.21.246-.484.186-.403-.307-.214-.496.214-.98.258-1.28.21-1.016.19-1.263.112-.42-.008-.028-.092.012-.953 1.307-1.448 1.957-1.146 1.227-.274.109-.477-.247.045-.44.266-.39 1.586-2.018.956-1.25.617-.723-.004-.105h-.036l-4.212 2.736-.75.096-.324-.302.04-.496.154-.162 1.267-.871z';
+    const codexPath = 'M14.949 6.547a3.94 3.94 0 0 0-.348-3.273 4.11 4.11 0 0 0-4.4-1.934A4.1 4.1 0 0 0 8.423.2 4.15 4.15 0 0 0 6.305.086a4.1 4.1 0 0 0-1.891.948 4.04 4.04 0 0 0-1.158 1.753 4.1 4.1 0 0 0-1.563.679A4 4 0 0 0 .554 4.72a3.99 3.99 0 0 0 .502 4.731 3.94 3.94 0 0 0 .346 3.274 4.11 4.11 0 0 0 4.402 1.933c.382.425.852.764 1.377.995.526.231 1.095.35 1.67.346 1.78.002 3.358-1.132 3.901-2.804a4.1 4.1 0 0 0 1.563-.68 4 4 0 0 0 1.14-1.253 3.99 3.99 0 0 0-.506-4.716m-6.097 8.406a3.05 3.05 0 0 1-1.945-.694l.096-.054 3.23-1.838a.53.53 0 0 0 .265-.455v-4.49l1.366.778q.02.011.025.035v3.722c-.003 1.653-1.361 2.992-3.037 2.996m-6.53-2.75a2.95 2.95 0 0 1-.36-2.01l.095.057L5.29 12.09a.53.53 0 0 0 .527 0l3.949-2.246v1.555a.05.05 0 0 1-.022.041L6.473 13.3c-1.454.826-3.311.335-4.15-1.098m-.85-6.94A3.02 3.02 0 0 1 3.07 3.949v3.785a.51.51 0 0 0 .262.451l3.93 2.237-1.366.779a.05.05 0 0 1-.048 0L2.585 9.342a2.98 2.98 0 0 1-1.113-4.094zm11.216 2.571L8.747 5.576l1.362-.776a.05.05 0 0 1 .048 0l3.265 1.86a3 3 0 0 1 1.173 1.207 2.96 2.96 0 0 1-.27 3.2 3.05 3.05 0 0 1-1.36.997V8.279a.52.52 0 0 0-.276-.445m1.36-2.015-.097-.057-3.226-1.855a.53.53 0 0 0-.53 0L6.249 6.153V4.598a.04.04 0 0 1 .019-.04L9.533 2.7a3.07 3.07 0 0 1 3.257.139c.474.325.843.778 1.066 1.303.223.526.289 1.103.191 1.664zM5.503 8.575 4.139 7.8a.05.05 0 0 1-.026-.037V4.049c0-.57.166-1.127.476-1.607s.752-.864 1.275-1.105a3.08 3.08 0 0 1 3.234.41l-.096.054-3.23 1.838a.53.53 0 0 0-.265.455zm.742-1.577 1.758-1 1.762 1v2l-1.755 1-1.762-1z';
+
+    function providerIcon(provider, label = '') {
+      const kind = provider === 'codex' ? 'codex' : 'claude';
+      const path = kind === 'codex' ? codexPath : claudePath;
+      return `<span class="provider-icon provider-${kind}" data-provider-icon="${kind}" ${label ? `role="img" aria-label="${escapeHTML(label)}"` : 'aria-hidden="true"'}><svg viewBox="0 0 16 16"><path d="${path}"/></svg></span>`;
+    }
+    const providerName = item => item?.provider === 'codex' ? 'Codex' : 'Claude';
+    const identity = item => item ? `${item.id}:${item.pane}` : '';
+    const targetQuery = item => `id=${encodeURIComponent(item.id)}&pane=${encodeURIComponent(item.pane)}`;
+    const current = () => state.sessions.find(item => item.id === state.selected) || state.sessions[0] || null;
+    const historyFor = item => state.histories[identity(item)] ||= { entries: [], revision: '', loaded: false, positioned: false, settling: false, settleTimer: null, scrollVersion: 0, atBottom: true, followOutput: true, scrollTop: 0, unread: false };
+
+    function matches() {
+      const query = state.query.trim().toLocaleLowerCase();
+      if (!query) return state.sessions;
+      return state.sessions.filter(item => `${item.title} ${item.cwd} ${item.path} #${item.id}`.toLocaleLowerCase().includes(query));
+    }
+    function grouped() {
+      const groups = matches().reduce((result, item) => {
+        (result[item.path] ||= []).push(item); return result;
+      }, {});
+      return Object.entries(groups).sort(([left], [right]) => {
+        if (groups[left].some(item => item.cwd === state.cwd)) return -1;
+        if (groups[right].some(item => item.cwd === state.cwd)) return 1;
+        return left.localeCompare(right);
+      });
+    }
+    async function api(path, options = {}) {
+      const response = await fetch(path, { cache: 'no-store', ...options });
+      const payload = await response.json();
+      if (!response.ok || payload.error) throw new Error(payload.error || `Request failed (${response.status})`);
+      return payload;
+    }
+    function displayTime(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(date);
+    }
+    function shortActivity(value) {
+      const match = String(value || '').match(/^(\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
+      if (!match) return value || '';
+      const today = new Date();
+      const monthDay = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      return match[1] === monthDay ? match[2] : match[1];
+    }
+
+    function linkify(escaped) {
+      return escaped.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<]+)/g, (match, label, labeledURL, bareURL) => {
+        if (labeledURL) return `<a href="${labeledURL}">${label}</a>`;
+        let url = bareURL; let trailing = '';
+        while (/[),.;!?]$/.test(url)) { trailing = url.slice(-1) + trailing; url = url.slice(0, -1); }
+        return `<a href="${url}">${url}</a>${trailing}`;
+      });
+    }
+    function inlineMarkdown(escaped) {
+      return escaped.split(/(`[^`\n]+`)/g).map(part => {
+        if (part.startsWith('`') && part.endsWith('`')) return `<code>${part.slice(1, -1)}</code>`;
+        return linkify(part.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'));
+      }).join('');
+    }
+    function renderMarkdown(value) {
+      const lines = escapeHTML(value).replace(/\r\n?/g, '\n').split('\n');
+      const output = [];
+      const tableCells = line => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim());
+      const isTableDivider = line => {
+        const cells = tableCells(line);
+        return cells.length > 1 && cells.every(cell => /^:?-{3,}:?$/.test(cell));
+      };
+      const startsBlock = (line, next = '') => /^\s*```/.test(line) || /^(#{1,6})\s+/.test(line) || /^\s*(?:-{3,}|_{3,}|\*{3,})\s*$/.test(line) || /^\s*[-+*]\s+/.test(line) || /^\s*\d+[.)]\s+/.test(line) || /^\s*&gt;\s?/.test(line) || (line.includes('|') && isTableDivider(next));
+      for (let index = 0; index < lines.length;) {
+        const line = lines[index];
+        if (!line.trim()) { index += 1; continue; }
+        if (/^\s*```/.test(line)) {
+          const code = []; index += 1;
+          while (index < lines.length && !/^\s*```\s*$/.test(lines[index])) code.push(lines[index++]);
+          if (index < lines.length) index += 1;
+          output.push(`<pre class="md-code"><code>${code.join('\n')}</code></pre>`); continue;
+        }
+        if (line.includes('|') && isTableDivider(lines[index + 1] || '')) {
+          const headers = tableCells(line); const rows = []; index += 2;
+          while (index < lines.length && lines[index].trim() && lines[index].includes('|')) rows.push(tableCells(lines[index++]));
+          const head = headers.map(cell => `<th>${inlineMarkdown(cell)}</th>`).join('');
+          const body = rows.map(row => `<tr>${headers.map((_, cell) => `<td>${inlineMarkdown(row[cell] || '')}</td>`).join('')}</tr>`).join('');
+          output.push(`<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`); continue;
+        }
+        const heading = line.match(/^(#{1,6})\s+(.+)$/);
+        if (heading) { const level = heading[1].length; output.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`); index += 1; continue; }
+        if (/^\s*(?:-{3,}|_{3,}|\*{3,})\s*$/.test(line)) { output.push('<hr>'); index += 1; continue; }
+        const unordered = line.match(/^\s*[-+*]\s+(.+)$/);
+        if (unordered) {
+          const items = [];
+          while (index < lines.length) { const match = lines[index].match(/^\s*[-+*]\s+(.+)$/); if (!match) break; items.push(`<li>${inlineMarkdown(match[1])}</li>`); index += 1; }
+          output.push(`<ul>${items.join('')}</ul>`); continue;
+        }
+        const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+        if (ordered) {
+          const items = [];
+          while (index < lines.length) { const match = lines[index].match(/^\s*\d+[.)]\s+(.+)$/); if (!match) break; items.push(`<li>${inlineMarkdown(match[1])}</li>`); index += 1; }
+          output.push(`<ol>${items.join('')}</ol>`); continue;
+        }
+        if (/^\s*&gt;\s?/.test(line)) {
+          const quote = [];
+          while (index < lines.length) { const match = lines[index].match(/^\s*&gt;\s?(.*)$/); if (!match) break; quote.push(inlineMarkdown(match[1])); index += 1; }
+          output.push(`<blockquote>${quote.join('<br>')}</blockquote>`); continue;
+        }
+        const paragraph = [];
+        while (index < lines.length && lines[index].trim() && !startsBlock(lines[index], lines[index + 1] || '')) paragraph.push(inlineMarkdown(lines[index++]));
+        if (paragraph.length) output.push(`<p>${paragraph.join('<br>')}</p>`);
+      }
+      return output.join('');
+    }
+
+    function sessionRow(item) {
+      const selected = item.id === state.selected;
+      const menuOpen = state.menu?.id === item.id;
+      const status = item.state === 'working' ? 'Working' : 'Ready';
+      return `<div class="session-item ${selected ? 'selected' : ''}" role="listitem">
+        <button class="session-select" data-session="${escapeHTML(item.id)}" aria-current="${selected ? 'true' : 'false'}">
+          ${providerIcon(item.provider)}
+          <span class="session-title">${escapeHTML(item.title)}</span>
+          <span class="session-status"><span class="status-dot ${item.state === 'working' ? 'working' : ''}" aria-hidden="true"></span><span>#${escapeHTML(item.id)} · ${status}</span></span>
+          <span class="session-time">${escapeHTML(shortActivity(item.activity))}</span>
+        </button>
+        <button class="session-menu-trigger" data-session-menu-trigger="${escapeHTML(item.id)}" aria-label="Session actions for ${escapeHTML(item.title)}" aria-haspopup="menu" aria-expanded="${menuOpen}">
+          <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="13" cy="8" r="1.2"/></svg>
+        </button>
+      </div>`;
+    }
+    function sidebarGroups() {
+      return grouped().map(([path, items]) => `<section><div class="group-label" title="${escapeHTML(path)}">${escapeHTML(path)}</div><div role="list">${items.map(sessionRow).join('')}</div></section>`).join('');
+    }
+    function continuesMessage(previous, entry) {
+      if (!previous || previous.role !== entry.role || entry.role === 'terminal') return false;
+      const before = new Date(previous.timestamp).getTime();
+      const after = new Date(entry.timestamp).getTime();
+      return Number.isFinite(before) && Number.isFinite(after) && Math.abs(after - before) <= 5 * 60 * 1000;
+    }
+    function historyEntry(entry, item, continued = false) {
+      const role = ['user', 'assistant', 'terminal'].includes(entry.role) ? entry.role : 'terminal';
+      const time = displayTime(entry.timestamp);
+      if (role === 'terminal') {
+        return `<article class="message terminal" data-history-entry="${escapeHTML(entry.id)}" data-role="terminal"><div class="message-meta"><span class="message-author">Terminal</span>${time ? `<time class="message-time">${escapeHTML(time)}</time>` : ''}</div><pre>${escapeHTML(entry.text)}</pre></article>`;
+      }
+      const assistant = role === 'assistant';
+      const author = assistant ? providerName(item) : 'You';
+      const meta = continued ? '' : `<div class="message-meta">${assistant ? providerIcon(item.provider) : ''}<span class="message-author">${author}</span>${time ? `<time class="message-time">${escapeHTML(time)}</time>` : ''}</div>`;
+      return `<article class="message ${role}${continued ? ' continued' : ''}" data-history-entry="${escapeHTML(entry.id)}" data-role="${role}">${meta}<div class="message-text">${renderMarkdown(entry.text)}</div></article>`;
+    }
+    function historyMarkup(item) {
+      const history = historyFor(item);
+      if (!history.loaded) return '<div class="history-loading" aria-label="Loading full session history"><div class="loading-line"></div><div class="loading-line"></div><div class="loading-line"></div></div>';
+      if (!history.entries.length) return '<div class="history-empty">No conversation history yet.</div>';
+      return history.entries.map((entry, index) => historyEntry(entry, item, continuesMessage(history.entries[index - 1], entry))).join('');
+    }
+    function conversation(item) {
+      if (!item) return `<section class="conversation" data-conversation><div class="history-empty">Create a session to begin.</div></section>`;
+      const status = item.state === 'working' ? 'Working' : 'Ready';
+      const history = historyFor(item);
+      const historyLabel = history.loaded ? `Full history · ${history.entries.length} ${history.entries.length === 1 ? 'entry' : 'entries'}` : 'Full history';
+      return `<section class="conversation" data-conversation>
+        <header class="conversation-head">
+          ${providerIcon(item.provider, providerName(item))}
+          <div class="conversation-title-block"><div class="conversation-title">${escapeHTML(item.title)}</div><div class="conversation-meta">${escapeHTML(item.path)} · ${providerName(item)} · #${escapeHTML(item.id)} · <span data-history-count>${historyLabel}</span></div></div>
+          <div class="conversation-state"><span class="status-dot ${item.state === 'working' ? 'working' : ''}"></span>${status}</div>
+        </header>
+        <div class="history-stage">
+          <div class="history-viewport" data-history-scroll data-history-key="${escapeHTML(identity(item))}"><div class="history-document" data-history>${historyMarkup(item)}</div></div>
+          <button class="latest-button" data-jump-latest hidden>↓ Latest</button>
+        </div>
+        <div class="composer-dock">
+          <form class="composer" data-composer>
+            ${providerIcon(item.provider)}
+            <textarea data-prompt aria-label="Message ${providerName(item)}" rows="1" placeholder="Message ${providerName(item)}…">${escapeHTML(state.drafts[identity(item)] || '')}</textarea>
+            <button class="send-button" data-send type="submit" aria-label="Send message"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5v-9m-3.5 3L8 3l3.5 3.5"/></svg><span class="sr-only">Send</span></button>
+          </form>
+        </div>
+      </section>`;
+    }
+    function sessionMenu() {
+      if (!state.menu) return '';
+      const item = state.sessions.find(entry => entry.id === state.menu.id);
+      if (!item) return '';
+      return `<div class="menu-layer" data-dismiss-menu><div class="session-menu" data-session-menu role="menu" aria-label="Session actions" style="top:${state.menu.top}px;left:${state.menu.left}px"><button class="menu-item" data-menu-delete="${escapeHTML(item.id)}" role="menuitem">Delete session…</button></div></div>`;
+    }
+    function confirmDialog() {
+      const item = state.sessions.find(entry => entry.id === state.confirm);
+      if (!item) return '';
+      return `<div class="scrim"><section class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-title"><h2 id="delete-title">Delete session #${escapeHTML(item.id)}?</h2><p><strong>${escapeHTML(item.title)}</strong><br>${escapeHTML(item.path)}</p><p>This stops the running ${providerName(item)} process.</p><div class="dialog-actions"><button autofocus class="dialog-button" data-cancel>Cancel</button><button class="dialog-button danger" data-confirm-delete>Delete session</button></div></section></div>`;
+    }
+
+    function saveVisibleScroll() {
+      const viewport = document.querySelector('[data-history-scroll]');
+      const key = viewport?.dataset.historyKey;
+      const history = key && state.histories[key];
+      if (!viewport || !history || !history.positioned || history.settling) return;
+      history.scrollTop = viewport.scrollTop;
+      history.atBottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 28;
+      if (history.atBottom) history.unread = false;
+    }
+    function render() {
+      saveVisibleScroll();
+      const item = current();
+      const groups = sidebarGroups();
+      const inert = state.confirm ? 'inert' : '';
+      document.querySelector('#app').innerHTML = `<section class="app">
+        <header class="titlebar" ${inert}>
+          <div class="titlebar-side"><span class="brand">workdpace</span></div>
+          <div class="titlebar-main"><span class="app-context">${escapeHTML(state.cwd || 'Local agent sessions')}</span><span class="spacer"></span><button class="utility-button" data-focus-search aria-label="Search sessions"><span class="kbd">⌘K</span></button></div>
+        </header>
+        <div class="workspace" ${inert}>
+          <aside class="sidebar" aria-label="Agent sessions">
+            <div class="sidebar-head"><span class="sidebar-title">Sessions</span><span class="session-count">${state.loading ? '' : state.sessions.length}</span><span class="spacer"></span><button class="new-button" data-new aria-label="New session" ${state.busy ? 'disabled' : ''}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg></button></div>
+            <div class="search-wrap"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.2"/><path d="m10.2 10.2 3 3"/></svg><input class="search" data-search aria-label="Search local sessions" value="${escapeHTML(state.query)}" placeholder="Search sessions"></div>
+            <div class="session-list">${state.loading ? '<div class="history-loading"><div class="loading-line"></div><div class="loading-line"></div><div class="loading-line"></div></div>' : groups || '<div class="empty-sidebar">No matching sessions.<br>Press ⌘N to create one.</div>'}</div>
+          </aside>
+          ${conversation(item)}
+        </div>
+        ${sessionMenu()}${state.confirm ? confirmDialog() : ''}${state.toast ? `<div class="toast" role="status">${escapeHTML(state.toast)}</div>` : ''}
+      </section>`;
+      bind(); restoreVisibleHistory();
+    }
+
+    function restoreVisibleHistory() {
+      const item = current();
+      if (!item) return;
+      const key = identity(item);
+      const history = historyFor(item);
+      const follow = history.followOutput && (!history.positioned || history.atBottom);
+      const scrollVersion = history.scrollVersion;
+      requestAnimationFrame(() => {
+        const liveItem = current();
+        const viewport = document.querySelector('[data-history-scroll]');
+        if (!liveItem || identity(liveItem) !== key || !viewport || history.settling || history.scrollVersion !== scrollVersion) return;
+        viewport.scrollTop = follow ? viewport.scrollHeight : history.scrollTop;
+        history.positioned = true;
+        history.scrollTop = viewport.scrollTop;
+        history.atBottom = follow;
+        updateLatestButton(history);
+      });
+    }
+    function updateLatestButton(history = current() ? historyFor(current()) : null) {
+      const button = document.querySelector('[data-jump-latest]');
+      if (!button) return;
+      button.hidden = !history || (history.atBottom && history.followOutput);
+      button.textContent = history && !history.followOutput ? '↓ Resume live' : (history?.unread ? '↓ New output' : '↓ Latest');
+    }
+    function stopFollowingHistory(history) {
+      clearTimeout(history.settleTimer);
+      history.settleTimer = null;
+      history.settling = false;
+      history.positioned = true;
+      history.followOutput = false;
+      history.atBottom = false;
+      history.scrollVersion += 1;
+      updateLatestButton(history);
+    }
+    function resizePrompt(input) {
+      input.style.height = 'auto';
+      input.style.height = `${Math.min(input.scrollHeight, 128)}px`;
+    }
+    function updateSendButton() {
+      const input = document.querySelector('[data-prompt]');
+      const button = document.querySelector('[data-send]');
+      if (!button) return;
+      button.disabled = state.promptSending || !input?.value.trim();
+      button.setAttribute('aria-label', state.promptSending ? 'Sending message' : 'Send message');
+    }
+
+    function bind() {
+      document.querySelectorAll('[data-session]').forEach(button => button.addEventListener('click', () => select(button.dataset.session)));
+      document.querySelectorAll('[data-session-menu-trigger]').forEach(button => button.addEventListener('click', event => {
+        event.stopPropagation(); openSessionMenu(button.dataset.sessionMenuTrigger, button);
+      }));
+      document.querySelector('[data-dismiss-menu]')?.addEventListener('click', event => {
+        if (event.target === event.currentTarget) { state.menu = null; render(); }
+      });
+      document.querySelector('[data-menu-delete]')?.addEventListener('click', event => requestDelete(event.currentTarget.dataset.menuDelete));
+      document.querySelector('[data-focus-search]')?.addEventListener('click', focusSearch);
+      document.querySelector('[data-new]')?.addEventListener('click', createSession);
+      const search = document.querySelector('[data-search]');
+      search?.addEventListener('compositionstart', () => { composingSearch = true; });
+      search?.addEventListener('compositionend', event => {
+        composingSearch = false; state.query = event.target.value; render(); focusSearch();
+      });
+      search?.addEventListener('input', event => {
+        state.query = event.target.value;
+        if (event.isComposing || composingSearch) return;
+        const start = event.target.selectionStart; const end = event.target.selectionEnd;
+        render(); focusSearch(start, end);
+      });
+      const viewport = document.querySelector('[data-history-scroll]');
+      viewport?.addEventListener('wheel', event => {
+        if (event.deltaY < 0) stopFollowingHistory(historyFor(current()));
+      }, { passive: true });
+      viewport?.addEventListener('touchmove', () => stopFollowingHistory(historyFor(current())), { passive: true });
+      viewport?.addEventListener('scroll', () => {
+        const history = historyFor(current());
+        const nextTop = viewport.scrollTop;
+        if (nextTop < history.scrollTop - 1) stopFollowingHistory(history);
+        if (!history.positioned || history.settling) return;
+        history.scrollVersion += 1;
+        history.scrollTop = nextTop;
+        history.atBottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 28;
+        if (history.atBottom) history.unread = false;
+        updateLatestButton(history);
+      }, { passive: true });
+      document.querySelector('[data-jump-latest]')?.addEventListener('click', jumpToLatest);
+      const prompt = document.querySelector('[data-prompt]');
+      prompt?.addEventListener('input', event => {
+        const item = current(); if (item) state.drafts[identity(item)] = event.target.value;
+        resizePrompt(event.target); updateSendButton();
+      });
+      prompt?.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+          event.preventDefault(); document.querySelector('[data-composer]')?.requestSubmit();
+        }
+      });
+      document.querySelector('[data-composer]')?.addEventListener('submit', event => { event.preventDefault(); sendPrompt(); });
+      if (prompt) resizePrompt(prompt);
+      updateSendButton();
+      document.querySelector('[data-cancel]')?.addEventListener('click', () => { state.confirm = null; render(); });
+      document.querySelector('[data-confirm-delete]')?.addEventListener('click', deleteSession);
+    }
+
+    function focusSearch(start, end = start) {
+      const input = document.querySelector('[data-search]');
+      input?.focus();
+      const offset = start ?? input?.value.length ?? 0;
+      input?.setSelectionRange(offset, end ?? offset);
+    }
+    function select(id) {
+      if (state.selected === id) { state.menu = null; return; }
+      saveVisibleScroll(); state.selected = id; state.menu = null; render(); loadHistory(current());
+    }
+    function openSessionMenu(id, button) {
+      if (state.menu?.id === id) { state.menu = null; render(); return; }
+      const rect = button.getBoundingClientRect();
+      state.menu = { id, top: Math.min(rect.bottom + 4, innerHeight - 44), left: Math.max(8, rect.right - 160) };
+      render(); requestAnimationFrame(() => document.querySelector('[data-menu-delete]')?.focus());
+    }
+    function requestDelete(id = current()?.id) {
+      if (!id || state.busy) return;
+      state.menu = null; state.confirm = id; render(); requestAnimationFrame(() => document.querySelector('[data-cancel]')?.focus());
+    }
+    function jumpToLatest() {
+      const item = current(); const viewport = document.querySelector('[data-history-scroll]');
+      if (!item || !viewport) return;
+      const history = historyFor(item); clearTimeout(history.settleTimer); history.settleTimer = null; history.settling = false; history.positioned = true; history.atBottom = true; history.unread = false;
+      history.followOutput = true;
+      viewport.scrollTop = viewport.scrollHeight; history.scrollTop = viewport.scrollTop; updateLatestButton(history);
+    }
+
+    async function loadSessions(preferred) {
+      try {
+        const payload = await api('/api/sessions');
+        const before = JSON.stringify(state.sessions); const previousSelected = state.selected;
+        state.cwd = payload.cwd; state.sessions = payload.sessions; state.loading = false;
+        const candidate = preferred || state.selected;
+        state.selected = state.sessions.some(item => item.id === candidate) ? candidate : (state.sessions.find(item => item.cwd === state.cwd)?.id || state.sessions[0]?.id || null);
+        if (state.menu && !state.sessions.some(item => item.id === state.menu.id)) state.menu = null;
+        if (before !== JSON.stringify(state.sessions) || previousSelected !== state.selected || !document.querySelector('.workspace')) render();
+        const item = current();
+        if (item) await loadHistory(item);
+        else document.documentElement.dataset.ready = 'true';
+      } catch (error) {
+        state.loading = false; document.documentElement.dataset.ready = 'true'; toast(error.message);
+      }
+    }
+    async function loadHistory(item = current()) {
+      if (!item) return;
+      const key = identity(item); const history = historyFor(item);
+      if (historyInFlight.has(key)) return;
+      historyInFlight.add(key);
+      try {
+        const revision = history.revision ? `&revision=${encodeURIComponent(history.revision)}` : '';
+        const payload = await api(`/api/history?${targetQuery(item)}${revision}`);
+        if (payload.unchanged) { history.revision = payload.revision || history.revision; document.documentElement.dataset.ready = 'true'; return; }
+        const wasLoaded = history.loaded; const follow = history.followOutput && (history.atBottom || !wasLoaded);
+        history.entries = Array.isArray(payload.history) ? payload.history : [];
+        history.revision = payload.revision || '';
+        history.loaded = true;
+        if (wasLoaded && !follow) history.unread = true;
+        updateVisibleHistory(key, follow);
+        document.documentElement.dataset.ready = 'true';
+      } catch (error) {
+        handleHistoryError(item, key, error);
+        document.documentElement.dataset.ready = 'true';
+      } finally { historyInFlight.delete(key); }
+    }
+    function handleHistoryError(item, key, error) {
+      const history = historyFor(item);
+      history.loaded = true;
+      history.revision = '';
+      if (history.entries.length) {
+        toast(error.message);
+        return;
+      }
+      history.entries = [{ id: `error-${Date.now()}`, role: 'terminal', text: error.message, timestamp: '' }];
+      updateVisibleHistory(key, history.followOutput && history.atBottom);
+    }
+    function updateVisibleHistory(key, follow) {
+      const item = current(); const viewport = document.querySelector('[data-history-scroll]'); const container = document.querySelector('[data-history]');
+      if (!item || identity(item) !== key || !viewport || !container) return;
+      const history = historyFor(item); const previousTop = history.scrollTop;
+      clearTimeout(history.settleTimer);
+      history.settleTimer = null;
+      follow = follow && history.followOutput;
+      const scrollVersion = history.scrollVersion;
+      history.positioned = false; history.settling = follow;
+      container.innerHTML = historyMarkup(item);
+      const count = document.querySelector('[data-history-count]');
+      if (count) count.textContent = `Full history · ${history.entries.length} ${history.entries.length === 1 ? 'entry' : 'entries'}`;
+      const position = final => {
+        const liveItem = current();
+        const liveViewport = document.querySelector('[data-history-scroll]');
+        if (!liveItem || identity(liveItem) !== key || !liveViewport) {
+          if (final) { history.settling = false; history.positioned = false; }
+          return;
+        }
+        liveViewport.scrollTop = follow ? liveViewport.scrollHeight : previousTop;
+        history.scrollTop = liveViewport.scrollTop; history.atBottom = follow;
+        if (final) { history.settling = false; history.positioned = true; }
+        if (follow) history.unread = false;
+        updateLatestButton(history);
+      };
+      requestAnimationFrame(() => {
+        if (history.scrollVersion !== scrollVersion) {
+          history.settling = false;
+          history.positioned = true;
+          return;
+        }
+        position(!follow);
+        if (!follow) return;
+        const startedAt = performance.now();
+        const settleLayout = () => {
+          if (performance.now() - startedAt >= 600) {
+            position(true);
+            history.settleTimer = null;
+            return;
+          }
+          position(false);
+          history.settleTimer = setTimeout(settleLayout, 50);
+        };
+        settleLayout();
+      });
+    }
+
+    async function sendPrompt() {
+      const item = current(); const input = document.querySelector('[data-prompt]'); const message = input?.value || '';
+      if (!item || !message.trim() || state.promptSending) return;
+      state.promptSending = true; updateSendButton();
+      try {
+        await api(`/api/send?${targetQuery(item)}`, { method: 'POST', body: message });
+        delete state.drafts[identity(item)];
+        if (input?.isConnected) { input.value = ''; resizePrompt(input); input.focus(); }
+        const history = historyFor(item); history.atBottom = true; history.followOutput = true; history.unread = false;
+        setTimeout(() => loadHistory(item), 100);
+      } catch (error) { toast(error.message); }
+      finally { state.promptSending = false; updateSendButton(); }
+    }
+    async function createSession() {
+      if (state.busy) return;
+      state.busy = true; state.menu = null; render();
+      try {
+        const payload = await api(`/api/create?cwd=${encodeURIComponent(state.cwd)}`);
+        await loadSessions(payload.id);
+      } catch (error) { toast(error.message); }
+      finally { state.busy = false; render(); }
+    }
+    async function deleteSession() {
+      const id = state.confirm; const item = state.sessions.find(entry => entry.id === id);
+      if (!item || state.busy) return;
+      state.busy = true; render();
+      try {
+        await api(`/api/delete?${targetQuery(item)}`);
+        delete state.histories[identity(item)]; delete state.drafts[identity(item)];
+        state.confirm = null; state.selected = null; await loadSessions(); toast(`Deleted session #${id}`);
+      } catch (error) { state.confirm = null; render(); toast(error.message); }
+      finally { state.busy = false; render(); }
+    }
+    function toast(message) {
+      state.toast = message; render(); clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { state.toast = ''; render(); }, 2300);
+    }
+
+    document.addEventListener('keydown', event => {
+      const editing = event.target.matches('input, textarea, [contenteditable]');
+      if (state.confirm) {
+        if (event.key === 'Escape') { event.preventDefault(); state.confirm = null; render(); }
+        else if (event.metaKey && ['k', 'n', 'r', 'f'].includes(event.key.toLowerCase())) event.preventDefault();
+        return;
+      }
+      if (event.key === 'Escape' && state.menu) { event.preventDefault(); state.menu = null; render(); return; }
+      if (event.metaKey && ['k', 'f'].includes(event.key.toLowerCase())) { event.preventDefault(); state.menu = null; render(); focusSearch(); return; }
+      if (event.metaKey && event.key.toLowerCase() === 'n') { event.preventDefault(); createSession(); return; }
+      if (event.metaKey && event.key.toLowerCase() === 'r') { event.preventDefault(); loadSessions(); return; }
+      if (event.key === 'Escape' && state.query) { event.preventDefault(); state.query = ''; render(); focusSearch(); return; }
+      if ((!editing || event.target.matches('[data-search]')) && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+        const items = matches(); if (!items.length) return;
+        event.preventDefault(); const index = Math.max(0, items.findIndex(item => item.id === state.selected));
+        select(items[(index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].id);
+      }
+    });
+
+    render();
+    loadSessions();
+    setInterval(() => { if (!document.hidden) loadHistory(); }, 1200);
+    setInterval(() => {
+      const editing = document.activeElement?.matches?.('input, textarea, [contenteditable]');
+      if (!document.hidden && !editing && !state.confirm && !state.menu) loadSessions();
+    }, 5000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { loadSessions(); loadHistory(); } });
+  </script>
+</body>
+</html>
