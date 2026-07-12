@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>workdpace</string>
+  <string>Agent Workspace</string>
   <key>CFBundleExecutable</key>
-  <string>workdpace</string>
+  <string>AgentWorkspace</string>
   <key>CFBundleIdentifier</key>
-  <string>io.github.dongdongbear.workdpace</string>
+  <string>io.github.dongdongbear.agent-workspace</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundleName</key>
-  <string>workdpace</string>
+  <string>Agent Workspace</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

@@ -2,23 +2,23 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
-BUILD_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/workdpace-build.XXXXXX")
-APP="$BUILD_ROOT/workdpace.app"
-DEST="$HOME/Applications/workdpace.app"
+BUILD_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/agent-workspace-build.XXXXXX")
+APP="$BUILD_ROOT/Agent Workspace.app"
+DEST="$HOME/Applications/Agent Workspace.app"
 ARCH=$(uname -m)
 
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Bridge"
 xcrun --sdk macosx swiftc -O -parse-as-library -target "${ARCH}-apple-macosx13.0" \
   -framework AppKit -framework WebKit \
-  "$ROOT/Sources/Workdpace.swift" \
-  -o "$APP/Contents/MacOS/workdpace"
+  "$ROOT/Sources/AgentWorkspace.swift" \
+  -o "$APP/Contents/MacOS/AgentWorkspace"
 cp "$ROOT/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/Resources/index.html" "$APP/Contents/Resources/index.html"
 cp "$ROOT/Resources/Bridge/sesslist.sh" "$ROOT/Resources/Bridge/newsess.sh" \
   "$APP/Contents/Resources/Bridge/"
 ICON_SOURCE="$BUILD_ROOT/AppIcon-1024.png"
 ICONSET="$BUILD_ROOT/AppIcon.iconset"
-"$APP/Contents/MacOS/workdpace" --write-icon "$ICON_SOURCE"
+"$APP/Contents/MacOS/AgentWorkspace" --write-icon "$ICON_SOURCE"
 mkdir -p "$ICONSET"
 while read -r name size; do
   sips -z "$size" "$size" "$ICON_SOURCE" --out "$ICONSET/$name" >/dev/null
@@ -57,14 +57,14 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$HOME/Applications"
-STAGED="$HOME/Applications/.workdpace-install-$$.app"
-BACKUP="$HOME/Applications/.workdpace-backup-$$.app"
+STAGED="$HOME/Applications/.agent-workspace-install-$$.app"
+BACKUP="$HOME/Applications/.agent-workspace-backup-$$.app"
 rm -rf "$STAGED"
 rm -rf "$BACKUP"
 ditto "$APP" "$STAGED"
 if [ -e "$DEST" ]; then
   EXISTING_ID=$(plutil -extract CFBundleIdentifier raw "$DEST/Contents/Info.plist" 2>/dev/null || true)
-  [ "$EXISTING_ID" = io.github.dongdongbear.workdpace ] || {
+  [ "$EXISTING_ID" = io.github.dongdongbear.agent-workspace ] || {
     rm -rf "$STAGED"
     printf 'Refusing to replace %s: unexpected bundle identifier %s\n' "$DEST" "${EXISTING_ID:-missing}" >&2
     exit 1
@@ -79,4 +79,12 @@ if [ -e "$BACKUP" ]; then
   rm -rf "$BACKUP"
 fi
 BACKUP=""
+remove_legacy_app() {
+  local path=$1 expected_id=$2 actual_id
+  [ -d "$path" ] || return 0
+  actual_id=$(plutil -extract CFBundleIdentifier raw "$path/Contents/Info.plist" 2>/dev/null || true)
+  [ "$actual_id" != "$expected_id" ] || rm -rf "$path"
+}
+remove_legacy_app "$HOME/Applications/workdpace.app" io.github.dongdongbear.workdpace
+remove_legacy_app "$HOME/Applications/Claude Workspace.app" com.dongdong.cc-workspace
 printf '%s\n' "$DEST"

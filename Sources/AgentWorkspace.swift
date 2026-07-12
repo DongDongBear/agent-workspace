@@ -11,6 +11,7 @@ private struct CommandResult {
 private struct SessionRow {
     let id: String
     let pane: String
+    let generation: String
     let provider: String
     let cwd: String
     let path: String
@@ -22,6 +23,7 @@ private struct SessionRow {
         [
             "id": id,
             "pane": pane,
+            "generation": generation,
             "provider": provider,
             "cwd": cwd,
             "path": path,
@@ -34,6 +36,7 @@ private struct SessionRow {
 
 private struct SessionTarget {
     let pane: String
+    let generation: String
     let claudePID: Int32?
 }
 
@@ -48,34 +51,11 @@ private struct HistoryEntry {
     }
 }
 
-private struct CachedHistory {
-    var revision: String
-    var fileIdentity: String
-    var fileSize: UInt64
-    var pending: Data
-    var entries: [HistoryEntry]
-    var assistantIndex: [String: Int]
-    var nextLineNumber: Int
-}
-
-private struct TranscriptFileState {
-    let revision: String
-    let identity: String
-    let size: UInt64
-}
-
-private struct ClaudeSessionMetadata: Decodable {
-    let pid: Int
-    let sessionId: String
-    let cwd: String
-}
-
 private final class TmuxBackend {
     let defaultCwd: String
     let home = FileManager.default.homeDirectoryForCurrentUser.path
     let tmux: String
     private var sessionTargets: [String: SessionTarget] = [:]
-    private var historyCache: [String: CachedHistory] = [:]
     private var uiTestRow: SessionRow?
     private var demoRows: [SessionRow]?
     private var demoHistory: [String: [HistoryEntry]] = [:]
@@ -124,7 +104,7 @@ private final class TmuxBackend {
     func sessions() throws -> [SessionRow] {
         if let demoRows { return demoRows }
         if let row = uiTestRow {
-            sessionTargets = [row.id: SessionTarget(pane: row.pane, claudePID: nil)]
+            sessionTargets = [row.id: SessionTarget(pane: row.pane, generation: row.generation, claudePID: nil)]
             return [row]
         }
         let script = try bridgeScript("sesslist")
@@ -141,6 +121,7 @@ private final class TmuxBackend {
             let row = SessionRow(
                 id: String(fields[0]),
                 pane: pane,
+                generation: String(claudePID),
                 provider: "claude",
                 cwd: String(fields[1]),
                 path: String(fields[2]),
@@ -148,7 +129,7 @@ private final class TmuxBackend {
                 activity: activityAndTitle.activity,
                 state: decorated.contains("38;5;64m●") ? "ready" : "working"
             )
-            return (row, SessionTarget(pane: pane, claudePID: claudePID))
+            return (row, SessionTarget(pane: pane, generation: String(claudePID), claudePID: claudePID))
         }
         sessionTargets = Dictionary(uniqueKeysWithValues: parsed.map { ($0.row.id, $0.target) })
         return parsed.map { $0.row }
@@ -156,15 +137,34 @@ private final class TmuxBackend {
 
     func prepareDemo() {
         let rows = [
-            SessionRow(id: "demo-1", pane: "%101", provider: "claude", cwd: "/Users/demo/Projects/atlas", path: "~/Projects/atlas", title: "Polish onboarding flow", activity: "07-11 09:42", state: "ready"),
-            SessionRow(id: "demo-2", pane: "%102", provider: "claude", cwd: "/Users/demo/Projects/atlas", path: "~/Projects/atlas", title: "Review API migration", activity: "07-11 09:38", state: "working"),
-            SessionRow(id: "demo-3", pane: "%103", provider: "claude", cwd: "/Users/demo/Projects/docs", path: "~/Projects/docs", title: "Write release notes", activity: "07-11 08:16", state: "ready"),
-            SessionRow(id: "demo-4", pane: "%104", provider: "claude", cwd: "/Users/demo", path: "~", title: "Claude Code", activity: "07-10 18:24", state: "ready"),
+            SessionRow(id: "demo-1", pane: "%101", generation: "demo-1", provider: "claude", cwd: "/Users/demo/Projects/atlas", path: "~/Projects/atlas", title: "Polish onboarding flow", activity: "07-11 09:42", state: "ready"),
+            SessionRow(id: "demo-2", pane: "%102", generation: "demo-2", provider: "claude", cwd: "/Users/demo/Projects/atlas", path: "~/Projects/atlas", title: "Review API migration", activity: "07-11 09:38", state: "working"),
+            SessionRow(id: "demo-3", pane: "%103", generation: "demo-3", provider: "claude", cwd: "/Users/demo/Projects/docs", path: "~/Projects/docs", title: "Write release notes", activity: "07-11 08:16", state: "ready"),
+            SessionRow(id: "demo-4", pane: "%104", generation: "demo-4", provider: "claude", cwd: "/Users/demo", path: "~", title: "Claude Code", activity: "07-10 18:24", state: "ready"),
         ]
         demoRows = rows
         demoHistory["demo-1"] = [
-            HistoryEntry(id: "demo-user-1", role: "user", text: "Tighten the onboarding empty state and keep the layout calm.", timestamp: "2026-07-11T09:40:00Z"),
-            HistoryEntry(id: "demo-assistant-1", role: "assistant", text: "Implemented the final pass:\n\n- Aligned the icon, title, metadata, and menu to a fixed grid\n- Replaced the heavy selection treatment with a quiet neutral state\n- Kept keyboard navigation and readable contrast intact\n\nThe workspace is ready for review.", timestamp: "2026-07-11T09:42:00Z"),
+            HistoryEntry(
+                id: "demo-terminal-1",
+                role: "terminal",
+                text: """
+                ╭─── Claude Code ─────────────────────────────────────────────╮
+                │ ~/Projects/atlas                                            │
+                ╰─────────────────────────────────────────────────────────────╯
+
+                ❯ Tighten the onboarding empty state and keep the layout calm.
+
+                ● Implemented the final pass:
+                  - Aligned the icon, title, metadata, and menu to a fixed grid
+                  - Replaced the heavy selection treatment with a quiet state
+                  - Kept keyboard navigation and readable contrast intact
+
+                The workspace is ready for review.
+
+                ❯
+                """,
+                timestamp: ""
+            ),
         ]
     }
 
@@ -182,6 +182,7 @@ private final class TmuxBackend {
         uiTestRow = SessionRow(
             id: session,
             pane: pane,
+            generation: "ui-\(pane)",
             provider: "claude",
             cwd: defaultCwd,
             path: "~",
@@ -198,50 +199,27 @@ private final class TmuxBackend {
         sessionTargets.removeValue(forKey: row.id)
     }
 
-    func history(_ session: String, pane: String, revision clientRevision: String?) throws -> [String: Any] {
-        if let row = demoRows?.first(where: { $0.id == session && $0.pane == pane }) {
+    func validateLifecycleIsolation() throws {
+        let session = "ccw-lifecycle-\(getpid())-\(UUID().uuidString.prefix(8))"
+        let started = run(tmux, ["new-session", "-d", "-s", session, "/bin/cat"])
+        guard started.status == 0 else { throw BackendError(started.output) }
+        defer { _ = run(tmux, ["kill-session", "-t", "=\(session)"]) }
+
+        cleanupUITestSession()
+        let survived = run(tmux, ["has-session", "-t", "=\(session)"])
+        guard survived.status == 0 else {
+            throw BackendError("Application shutdown cleanup killed an ordinary tmux session.")
+        }
+    }
+
+    func history(_ session: String, pane: String, generation: String, revision clientRevision: String?) throws -> [String: Any] {
+        if let row = demoRows?.first(where: { $0.id == session && $0.pane == pane && $0.generation == generation }) {
             let revision = "demo:\(row.id)"
             if clientRevision == revision { return ["revision": revision, "unchanged": true] }
             return ["history": (demoHistory[row.id] ?? []).map(\.json), "revision": revision, "unchanged": false]
         }
-        let target = try requireCachedTarget(session, pane: pane)
-        guard let claudePID = target.claudePID,
-              let transcript = transcriptURL(for: claudePID),
-              let fileState = transcriptFileState(transcript) else {
-            return try fallbackHistory(target.pane, revision: clientRevision)
-        }
-        if clientRevision == fileState.revision {
-            return ["revision": fileState.revision, "unchanged": true]
-        }
-        let cacheKey = transcript.path
-        let cache: CachedHistory
-        if let cached = historyCache[cacheKey], cached.revision == fileState.revision {
-            cache = cached
-        } else if var cached = historyCache[cacheKey], canIncrementallyAppend(cached, to: fileState) {
-            let previousRevision = cached.revision
-            let appended = try transcriptData(
-                transcript,
-                from: cached.fileSize,
-                byteCount: fileState.size - cached.fileSize
-            )
-            let visibleHistoryChanged = appendTranscriptData(appended, to: &cached)
-            cached.revision = fileState.revision
-            cached.fileIdentity = fileState.identity
-            cached.fileSize = fileState.size
-            historyCache[cacheKey] = cached
-            if clientRevision == previousRevision, !visibleHistoryChanged {
-                return ["revision": fileState.revision, "unchanged": true]
-            }
-            cache = cached
-        } else {
-            cache = try parseTranscript(transcript, fileState: fileState)
-            historyCache[cacheKey] = cache
-        }
-        return [
-            "history": cache.entries.map(\.json),
-            "revision": fileState.revision,
-            "unchanged": false,
-        ]
+        let target = try requireLiveCachedTarget(session, pane: pane, generation: generation)
+        return try fallbackHistory(target.pane, revision: clientRevision)
     }
 
     private func fallbackHistory(_ pane: String, revision clientRevision: String?) throws -> [String: Any] {
@@ -262,182 +240,6 @@ private final class TmuxBackend {
             "revision": revision,
             "unchanged": false,
         ]
-    }
-
-    private func transcriptURL(for claudePID: Int32) -> URL? {
-        let metadataURL = URL(fileURLWithPath: home)
-            .appendingPathComponent(".claude/sessions/\(claudePID).json")
-        guard let data = try? Data(contentsOf: metadataURL),
-              let metadata = try? JSONDecoder().decode(ClaudeSessionMetadata.self, from: data),
-              metadata.pid == Int(claudePID),
-              !metadata.sessionId.isEmpty,
-              !metadata.sessionId.contains("/") else { return nil }
-        let project = URL(fileURLWithPath: metadata.cwd).standardizedFileURL.path
-            .replacingOccurrences(of: "/", with: "-")
-        let projects = URL(fileURLWithPath: home).appendingPathComponent(".claude/projects")
-        let transcript = projects
-            .appendingPathComponent(project)
-            .appendingPathComponent("\(metadata.sessionId).jsonl")
-        var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: transcript.path, isDirectory: &isDirectory), !isDirectory.boolValue {
-            return transcript
-        }
-        let projectDirectories = (try? FileManager.default.contentsOfDirectory(
-            at: projects,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-        return projectDirectories.sorted { $0.path < $1.path }.first { directory in
-            let values = try? directory.resourceValues(forKeys: [.isDirectoryKey])
-            guard values?.isDirectory == true else { return false }
-            let candidate = directory.appendingPathComponent("\(metadata.sessionId).jsonl")
-            return FileManager.default.fileExists(atPath: candidate.path)
-        }?.appendingPathComponent("\(metadata.sessionId).jsonl")
-    }
-
-    private func transcriptFileState(_ url: URL) -> TranscriptFileState? {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = attributes[.size] as? NSNumber,
-              let modified = attributes[.modificationDate] as? Date,
-              let device = attributes[.systemNumber] as? NSNumber,
-              let inode = attributes[.systemFileNumber] as? NSNumber else { return nil }
-        let nanoseconds = Int64(modified.timeIntervalSince1970 * 1_000_000_000)
-        let bytes = size.uint64Value
-        let identity = "\(device.uint64Value):\(inode.uint64Value)"
-        return TranscriptFileState(
-            revision: "file:\(identity):\(nanoseconds):\(bytes)",
-            identity: identity,
-            size: bytes
-        )
-    }
-
-    private func parseTranscript(_ url: URL, fileState: TranscriptFileState) throws -> CachedHistory {
-        let data = try transcriptData(url, from: 0, byteCount: fileState.size)
-        var cache = CachedHistory(
-            revision: fileState.revision,
-            fileIdentity: fileState.identity,
-            fileSize: fileState.size,
-            pending: Data(),
-            entries: [],
-            assistantIndex: [:],
-            nextLineNumber: 0
-        )
-        _ = appendTranscriptData(data, to: &cache)
-        return cache
-    }
-
-    private func canIncrementallyAppend(_ cache: CachedHistory, to fileState: TranscriptFileState) -> Bool {
-        cache.fileIdentity == fileState.identity && fileState.size > cache.fileSize
-    }
-
-    private func transcriptData(_ url: URL, from offset: UInt64, byteCount: UInt64) throws -> Data {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        try handle.seek(toOffset: offset)
-        guard byteCount <= UInt64(Int.max) else { throw BackendError("Transcript append is too large to read safely.") }
-        var remaining = Int(byteCount)
-        var data = Data()
-        while remaining > 0 {
-            guard let chunk = try handle.read(upToCount: min(remaining, 1_048_576)), !chunk.isEmpty else { break }
-            data.append(chunk)
-            remaining -= chunk.count
-        }
-        guard remaining == 0 else { throw BackendError("Transcript changed while it was being read. Retrying on the next refresh.") }
-        return data
-    }
-
-    @discardableResult
-    private func appendTranscriptData(_ appended: Data, to cache: inout CachedHistory) -> Bool {
-        var data = cache.pending
-        data.append(appended)
-        guard let finalNewline = data.lastIndex(of: 0x0A) else {
-            cache.pending = data
-            return false
-        }
-        let completeEnd = data.index(after: finalNewline)
-        let complete = data[..<completeEnd]
-        cache.pending = Data(data[completeEnd...])
-        var visibleHistoryChanged = false
-        for line in complete.split(separator: 0x0A, omittingEmptySubsequences: true) {
-            let lineNumber = cache.nextLineNumber
-            cache.nextLineNumber += 1
-            guard let record = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
-                  let type = record["type"] as? String,
-                  type == "user" || type == "assistant",
-                  record["isMeta"] as? Bool != true,
-                  let message = record["message"] as? [String: Any],
-                  let content = message["content"] else { continue }
-            let text = visibleText(content).joined(separator: "\n\n")
-            guard !text.isEmpty else { continue }
-            let timestamp = record["timestamp"] as? String ?? ""
-            if type == "assistant" {
-                let id = (message["id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-                    ?? (record["uuid"] as? String)
-                    ?? "assistant-\(lineNumber)"
-                if let index = cache.assistantIndex[id] {
-                    let suffix = "\n\n\(text)"
-                    if cache.entries[index].text != text, !cache.entries[index].text.hasSuffix(suffix) {
-                        cache.entries[index].text += suffix
-                        visibleHistoryChanged = true
-                    }
-                } else {
-                    cache.assistantIndex[id] = cache.entries.count
-                    cache.entries.append(HistoryEntry(id: id, role: "assistant", text: text, timestamp: timestamp))
-                    visibleHistoryChanged = true
-                }
-            } else {
-                let id = (record["uuid"] as? String) ?? "user-\(lineNumber)"
-                cache.entries.append(HistoryEntry(id: id, role: "user", text: text, timestamp: timestamp))
-                visibleHistoryChanged = true
-            }
-        }
-        return visibleHistoryChanged
-    }
-
-    private func visibleText(_ content: Any) -> [String] {
-        let raw: [String]
-        if let text = content as? String {
-            raw = [text]
-        } else if let blocks = content as? [[String: Any]] {
-            raw = blocks.compactMap { block in
-                switch block["type"] as? String {
-                case "text":
-                    return block["text"] as? String
-                case "image":
-                    let source = block["source"] as? [String: Any]
-                    let mediaType = source?["media_type"] as? String
-                    return mediaType.map { "[Image attachment · \($0)]" } ?? "[Image attachment]"
-                default:
-                    return nil
-                }
-            }
-        } else {
-            raw = []
-        }
-        return raw.compactMap(normalizeVisibleText)
-    }
-
-    private func normalizeVisibleText(_ raw: String) -> String? {
-        let text = stripTerminalCodes(raw).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return nil }
-        if let command = tagValue("command-name", in: text) {
-            let arguments = tagValue("command-args", in: text) ?? ""
-            return arguments.isEmpty ? command : "\(command) \(arguments)"
-        }
-        let machinery = [
-            "<local-command-caveat>", "<local-command-stdout>", "<local-command-stderr>",
-            "<task-notification>", "<command-message>", "<command-args>",
-        ]
-        return machinery.contains(where: text.contains) ? nil : text
-    }
-
-    private func tagValue(_ tag: String, in text: String) -> String? {
-        let pattern = "<\(tag)>([\\s\\S]*?)</\(tag)>"
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-              let range = Range(match.range(at: 1), in: text) else { return nil }
-        let value = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? nil : value
     }
 
     private func stableDigest(_ data: Data) -> String {
@@ -470,20 +272,20 @@ private final class TmuxBackend {
         throw BackendError("The new agent session did not become ready.")
     }
 
-    func delete(_ session: String, pane: String) throws {
+    func delete(_ session: String, pane: String, generation: String) throws {
         try requireWritableMode()
-        _ = try requireCurrentTarget(session, pane: pane)
+        _ = try requireCurrentTarget(session, pane: pane, generation: generation)
         let result = run(tmux, ["kill-session", "-t", "=\(session)"])
         guard result.status == 0 else { throw BackendError(result.output.isEmpty ? "Session already ended." : result.output) }
         sessionTargets.removeValue(forKey: session)
     }
 
-    func send(_ session: String, pane: String, message: String) throws {
+    func send(_ session: String, pane: String, generation: String, message: String) throws {
         try requireWritableMode()
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw BackendError("Write a message first.") }
         let data = Data(message.utf8)
         guard data.count <= 32 * 1024 else { throw BackendError("Message is larger than 32 KB.") }
-        let target = try requireCurrentTarget(session, pane: pane)
+        let target = try requireCurrentTarget(session, pane: pane, generation: generation)
         try pasteAndSubmit(target.pane, data: data)
     }
 
@@ -491,8 +293,8 @@ private final class TmuxBackend {
         prepareDemo()
         let mutations: [() throws -> Void] = [
             { _ = try self.create(cwd: self.defaultCwd) },
-            { try self.delete("demo-1", pane: "%101") },
-            { try self.send("demo-1", pane: "%101", message: "must not escape demo mode") },
+            { try self.delete("demo-1", pane: "%101", generation: "demo-1") },
+            { try self.send("demo-1", pane: "%101", generation: "demo-1", message: "must not escape demo mode") },
         ]
         for mutation in mutations {
             do {
@@ -537,7 +339,7 @@ private final class TmuxBackend {
         var payload: [String: Any] = [:]
         var transcript = ""
         for _ in 0..<40 {
-            payload = try history(row.id, pane: row.pane, revision: nil)
+            payload = try history(row.id, pane: row.pane, generation: row.generation, revision: nil)
             transcript = ((payload["history"] as? [[String: Any]])?.first?["text"] as? String) ?? ""
             if transcript.contains("ccw-history-first"), transcript.contains("ccw-history-last") { break }
             Thread.sleep(forTimeInterval: 0.05)
@@ -546,57 +348,18 @@ private final class TmuxBackend {
               let revision = payload["revision"] as? String else {
             throw BackendError("Full-history fallback did not capture beyond the latest 200 lines.")
         }
-        let unchanged = try history(row.id, pane: row.pane, revision: revision)
+        var rejectedStaleGeneration = false
+        do {
+            _ = try history(row.id, pane: row.pane, generation: "stale-generation", revision: nil)
+        } catch {
+            rejectedStaleGeneration = true
+        }
+        guard rejectedStaleGeneration else {
+            throw BackendError("History accepted a stale session generation.")
+        }
+        let unchanged = try history(row.id, pane: row.pane, generation: row.generation, revision: revision)
         guard unchanged["unchanged"] as? Bool == true, unchanged["history"] == nil else {
             throw BackendError("History revision did not return an unchanged response.")
-        }
-    }
-
-    func validateHistoryParser() throws {
-        let fixture = """
-        {"type":"user","uuid":"u1","timestamp":"t1","message":{"role":"user","content":"Visible user message"}}
-        {"type":"user","uuid":"meta","timestamp":"t2","isMeta":true,"message":{"role":"user","content":"Injected metadata"}}
-        {"type":"user","uuid":"cmd","timestamp":"t3","message":{"role":"user","content":"<command-name>/login</command-name>\\n<command-message>login</command-message>\\n<command-args>team</command-args>"}}
-        {"type":"user","uuid":"stdout","timestamp":"t4","message":{"role":"user","content":"<local-command-stdout>secret machinery</local-command-stdout>"}}
-        {"type":"user","uuid":"tool","timestamp":"t5","message":{"role":"user","content":[{"type":"tool_result","content":"tool machinery"}]}}
-        {"type":"user","uuid":"image","timestamp":"t5.5","message":{"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AA=="}}]}}
-        {"type":"assistant","uuid":"a1-1","timestamp":"t6","message":{"id":"a1","role":"assistant","content":[{"type":"text","text":"First answer"},{"type":"tool_use","name":"Bash"}]}}
-        {"type":"user","uuid":"task","timestamp":"t7","message":{"role":"user","content":"<task-notification>background machinery</task-notification>"}}
-        {"type":"assistant","uuid":"a1-2","timestamp":"t8","message":{"id":"a1","role":"assistant","content":[{"type":"text","text":"Second answer"}]}}
-        """
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ccw-history-\(UUID().uuidString).jsonl")
-        try (fixture + "\n").write(to: url, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: url) }
-        guard let fileState = transcriptFileState(url) else { throw BackendError("Could not stat transcript fixture.") }
-        var cache = try parseTranscript(url, fileState: fileState)
-        guard fileState.revision.contains(fileState.identity) else {
-            throw BackendError("Transcript revision must include file identity before unchanged checks.")
-        }
-        let appendedState = TranscriptFileState(revision: "append", identity: fileState.identity, size: fileState.size + 1)
-        let replacementState = TranscriptFileState(revision: "replacement", identity: "replacement", size: fileState.size + 1)
-        guard canIncrementallyAppend(cache, to: appendedState), !canIncrementallyAppend(cache, to: replacementState) else {
-            throw BackendError("Transcript replacement must rebuild history instead of appending at a stale offset.")
-        }
-        let entries = cache.entries
-        guard entries.count == 4,
-              entries[0].role == "user", entries[0].text == "Visible user message",
-              entries[1].role == "user", entries[1].text == "/login team",
-              entries[2].role == "user", entries[2].text == "[Image attachment · image/png]",
-              entries[3].role == "assistant", entries[3].id == "a1",
-              entries[3].text == "First answer\n\nSecond answer",
-              entries[3].timestamp == "t6" else {
-            throw BackendError("Claude transcript visibility filtering or assistant aggregation regressed.")
-        }
-        let invisible = Data("{\"type\":\"assistant\",\"uuid\":\"tool-only\",\"message\":{\"id\":\"tool-only\",\"content\":[{\"type\":\"tool_use\"}]}}\n".utf8)
-        guard !appendTranscriptData(invisible, to: &cache), cache.entries.count == 4 else {
-            throw BackendError("Tool-only transcript appends should not rebuild visible history.")
-        }
-        let visible = Data("{\"type\":\"user\",\"uuid\":\"incremental\",\"timestamp\":\"t9\",\"message\":{\"content\":\"Incremental user message\"}}\n".utf8)
-        let midpoint = visible.count / 2
-        guard !appendTranscriptData(Data(visible[..<midpoint]), to: &cache),
-              appendTranscriptData(Data(visible[midpoint...]), to: &cache),
-              cache.entries.last?.text == "Incremental user message" else {
-            throw BackendError("Incremental transcript parsing lost a partial JSONL record.")
         }
     }
 
@@ -628,17 +391,25 @@ private final class TmuxBackend {
         return url.path
     }
 
-    private func requireCachedTarget(_ session: String, pane: String) throws -> SessionTarget {
-        guard let target = sessionTargets[session], target.pane == pane else {
+    private func requireCachedTarget(_ session: String, pane: String, generation: String) throws -> SessionTarget {
+        guard let target = sessionTargets[session], target.pane == pane, target.generation == generation else {
             throw BackendError("This agent session changed. Refresh before continuing.")
         }
         return target
     }
 
-    private func requireCurrentTarget(_ session: String, pane: String) throws -> SessionTarget {
-        let expected = try requireCachedTarget(session, pane: pane)
+    private func requireLiveCachedTarget(_ session: String, pane: String, generation: String) throws -> SessionTarget {
+        let target = try requireCachedTarget(session, pane: pane, generation: generation)
+        if let pid = target.claudePID, Darwin.kill(pid, 0) != 0, errno != EPERM {
+            throw BackendError("This agent is no longer running. Refresh before continuing.")
+        }
+        return target
+    }
+
+    private func requireCurrentTarget(_ session: String, pane: String, generation: String) throws -> SessionTarget {
+        let expected = try requireCachedTarget(session, pane: pane, generation: generation)
         _ = try sessions()
-        guard let current = sessionTargets[session], current.pane == expected.pane else {
+        guard let current = sessionTargets[session], current.pane == expected.pane, current.generation == expected.generation else {
             throw BackendError("This agent is no longer running. Your message was not sent.")
         }
         return current
@@ -712,7 +483,7 @@ private func stripTerminalCodes(_ input: String) -> String {
 
 private final class WorkspaceSchemeHandler: NSObject, WKURLSchemeHandler {
     private let backend: TmuxBackend
-    private let queue = DispatchQueue(label: "workdpace.backend", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "agent-workspace.backend", qos: .userInitiated)
     private let taskLock = NSLock()
     private var activeTasks = Set<ObjectIdentifier>()
 
@@ -726,8 +497,17 @@ private final class WorkspaceSchemeHandler: NSObject, WKURLSchemeHandler {
             finish(urlSchemeTask, status: 400, mime: "application/json", data: json(["error": "Bad request"]))
             return
         }
+        guard url.scheme?.lowercased() == "agentworkspace", url.host == "app" else {
+            finish(urlSchemeTask, status: 403, mime: "application/json", data: json(["error": "Forbidden origin"]))
+            return
+        }
+        let method = (urlSchemeTask.request.httpMethod ?? "GET").uppercased()
         let requestBody = urlSchemeTask.request.httpBody ?? Data()
         if url.path == "/index.html" || url.path == "/" {
+            guard method == "GET" else {
+                finish(urlSchemeTask, status: 405, mime: "application/json", data: json(["error": "Method not allowed"]))
+                return
+            }
             guard let resource = Bundle.main.url(forResource: "index", withExtension: "html"),
                   let data = try? Data(contentsOf: resource) else {
                 finish(urlSchemeTask, status: 500, mime: "text/plain", data: Data("Missing index.html".utf8))
@@ -745,27 +525,37 @@ private final class WorkspaceSchemeHandler: NSObject, WKURLSchemeHandler {
             do {
                 let payload: [String: Any]
                 switch url.path {
-                case "/api/sessions":
+                case "/api/sessions" where method == "GET":
                     payload = ["cwd": backend.presentedCwd, "sessions": try backend.sessions().map(\.json)]
-                case "/api/history":
+                case "/api/history" where method == "GET":
                     payload = try backend.history(
                         query["id"] ?? "",
                         pane: query["pane"] ?? "",
+                        generation: query["generation"] ?? "",
                         revision: query["revision"].flatMap { $0.isEmpty ? nil : $0 }
                     )
-                case "/api/create":
+                case "/api/create" where method == "POST":
                     let created = try backend.create(cwd: query["cwd"] ?? backend.defaultCwd)
                     payload = ["ok": true, "id": created.id, "pane": created.pane]
-                case "/api/delete":
-                    try backend.delete(query["id"] ?? "", pane: query["pane"] ?? "")
+                case "/api/delete" where method == "POST":
+                    try backend.delete(
+                        query["id"] ?? "",
+                        pane: query["pane"] ?? "",
+                        generation: query["generation"] ?? ""
+                    )
                     payload = ["ok": true]
-                case "/api/send":
+                case "/api/send" where method == "POST":
                     let id = query["id"] ?? ""
                     guard let message = String(data: requestBody, encoding: .utf8) else { throw BackendError("Message is not valid UTF-8.") }
-                    try backend.send(id, pane: query["pane"] ?? "", message: message)
+                    try backend.send(
+                        id,
+                        pane: query["pane"] ?? "",
+                        generation: query["generation"] ?? "",
+                        message: message
+                    )
                     payload = ["ok": true]
                 default:
-                    throw BackendError("Unknown endpoint")
+                    throw BackendError("Unknown endpoint or method")
                 }
                 self.finish(urlSchemeTask, status: 200, mime: "application/json", data: self.json(payload))
             } catch {
@@ -852,6 +642,11 @@ private func makeAppIcon() -> NSImage {
     return image
 }
 
+private final class WindowDragView: NSView {
+    override var mouseDownCanMoveWindow: Bool { true }
+    override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
+}
+
 private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     private let backend: TmuxBackend
     private let snapshotPath: String?
@@ -887,12 +682,15 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         let handler = WorkspaceSchemeHandler(backend: backend)
-        configuration.setURLSchemeHandler(handler, forURLScheme: "workdpace")
+        configuration.setURLSchemeHandler(handler, forURLScheme: "agentworkspace")
         schemeHandler = handler
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.autoresizingMask = [.width, .height]
         webView.navigationDelegate = self
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 800))
+        webView.frame = content.bounds
+        content.addSubview(webView)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800),
@@ -900,19 +698,28 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
             backing: .buffered,
             defer: false
         )
-        window.title = "workdpace"
+        window.title = "Agent Workspace"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         window.isMovableByWindowBackground = true
         window.minSize = NSSize(width: 820, height: 560)
-        window.contentView = webView
+        window.contentView = content
+        let dragRegion = WindowDragView(frame: NSRect(
+            x: 72,
+            y: max(0, content.bounds.height - 44),
+            width: max(0, content.bounds.width - 132),
+            height: 44
+        ))
+        dragRegion.identifier = NSUserInterfaceItemIdentifier("agent-workspace.window-drag")
+        dragRegion.autoresizingMask = [.width, .minYMargin]
+        content.addSubview(dragRegion, positioned: .above, relativeTo: webView)
         if runUITest || snapshotPath != nil {
             window.setContentSize(NSSize(width: 1280, height: 800))
             window.center()
         } else {
-            if !window.setFrameUsingName("WorkdpaceMainWindow") { window.center() }
-            window.setFrameAutosaveName("WorkdpaceMainWindow")
+            if !window.setFrameUsingName("AgentWorkspaceMainWindow") { window.center() }
+            window.setFrameAutosaveName("AgentWorkspaceMainWindow")
         }
         if backgroundRun {
             window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
@@ -923,7 +730,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
         self.window = window
         self.webView = webView
 
-        webView.load(URLRequest(url: URL(string: "workdpace://app/index.html")!))
+        webView.load(URLRequest(url: URL(string: "agentworkspace://app/index.html")!))
         if !backgroundRun { NSApp.activate(ignoringOtherApps: true) }
     }
 
@@ -944,14 +751,18 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
         decidePolicyFor navigationAction: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
-        guard navigationAction.navigationType == .linkActivated,
-              let url = navigationAction.request.url,
-              let scheme = url.scheme?.lowercased(),
-              scheme == "http" || scheme == "https" else {
+        guard let url = navigationAction.request.url,
+              let scheme = url.scheme?.lowercased() else {
+            decisionHandler(.cancel)
+            return
+        }
+        if scheme == "agentworkspace", url.host == "app" {
             decisionHandler(.allow)
             return
         }
-        NSWorkspace.shared.open(url)
+        if navigationAction.navigationType == .linkActivated, scheme == "http" || scheme == "https" {
+            NSWorkspace.shared.open(url)
+        }
         decisionHandler(.cancel)
     }
 
@@ -961,12 +772,15 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
             if value as? Bool == true {
                 let script = """
                 (async () => {
+                  const nativeDragRegion = nativeWindowDrag === true;
                   const item = current();
                   const sidebar = document.querySelector('.sidebar');
                   const conversation = document.querySelector('[data-conversation]');
                   const historyViewport = document.querySelector('[data-history-scroll]');
                   const historyDocument = document.querySelector('[data-history]');
-                  const titlebar = document.querySelector('.titlebar');
+                  const windowToolbar = document.querySelector('.window-toolbar');
+                  const sidebarBrandRow = document.querySelector('.sidebar-brand-row');
+                  const conversationHeadRect = document.querySelector('.conversation-head').getBoundingClientRect();
                   const selectedRow = document.querySelector('.session-item.selected');
                   const sidebarRect = sidebar.getBoundingClientRect();
                   const conversationRect = conversation.getBoundingClientRect();
@@ -977,56 +791,61 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
                   const selectedIconRect = selectedRow.querySelector('[data-provider-icon]')?.getBoundingClientRect();
                   const selectedTitleRect = selectedRow.querySelector('.session-title')?.getBoundingClientRect();
                   const selectedStatusRect = selectedRow.querySelector('.session-status')?.getBoundingClientRect();
-                  const selectedTimeRect = selectedRow.querySelector('.session-time')?.getBoundingClientRect();
                   const selectedMenuRect = selectedRow.querySelector('[data-session-menu-trigger]')?.getBoundingClientRect();
-                  const selectedMarkerStyle = getComputedStyle(selectedRow, '::before');
-                  const selectedStatusStyle = getComputedStyle(selectedRow.querySelector('.session-status'));
-                  const selectedTimeStyle = getComputedStyle(selectedRow.querySelector('.session-time'));
                   const headerIconRect = document.querySelector('.conversation-head > [data-provider-icon]')?.getBoundingClientRect();
                   const headerTitleRect = document.querySelector('.conversation-title')?.getBoundingClientRect();
                   const headerStateRect = document.querySelector('.conversation-state')?.getBoundingClientRect();
                   const centerY = rect => rect.top + rect.height / 2;
-                  const workbenchLayout = sidebarRect.width >= 280
-                    && sidebarRect.width <= 320
+                  const workbenchLayout = sidebarRect.width >= 300
+                    && sidebarRect.width <= 336
+                    && sidebarRect.top === 0
+                    && Math.abs(sidebarRect.height - innerHeight) <= 1
                     && Math.abs(sidebarRect.right - conversationRect.left) <= 2
                     && conversationRect.width > sidebarRect.width * 2
                     && Math.abs(historyViewportRect.width - conversationRect.width) <= 2
                     && Math.abs(historyRect.width - historyViewport.clientWidth) <= 2
                     && rowRects.length === state.sessions.length
-                    && rowRects.every(rect => rect.height <= 56)
-                    && titlebar.getBoundingClientRect().height <= 48
+                    && rowRects.every(rect => rect.height <= 40)
+                    && Math.abs(windowToolbar.getBoundingClientRect().height - 58) <= 1
+                    && Math.abs(sidebarBrandRow.getBoundingClientRect().height - 42) <= 1
+                    && Math.abs(conversationHeadRect.top - 58) <= 1
+                    && document.querySelector('.titlebar') === null
                     && document.documentElement.scrollWidth === innerWidth;
-                  const rowAlignment = Math.abs(selectedRect.width - 304) <= 1
-                    && Math.abs(selectedRect.height - 48) <= 1
+                  const iconTitleGap = selectedTitleRect.left - selectedIconRect.right;
+                  const rowAlignment = selectedRect.width > 250
+                    && Math.abs(selectedRect.height - 38) <= 1
                     && Math.abs(centerY(selectedIconRect) - centerY(selectedTitleRect)) <= 1
                     && Math.abs(centerY(selectedMenuRect) - centerY(selectedTitleRect)) <= 1
-                    && Math.abs(centerY(selectedStatusRect) - centerY(selectedTimeRect)) <= 1
                     && Math.abs(selectedIconRect.left - selectedRect.left - 8) <= 1
-                    && Math.abs(selectedTitleRect.left - selectedIconRect.right - 8) <= 1
+                    && iconTitleGap >= 4 && iconTitleGap <= 10
                     && Math.abs(selectedRect.right - selectedMenuRect.right - 4) <= 1
                     && getComputedStyle(selectedRow).boxShadow === 'none'
-                    && selectedMarkerStyle.width === '2px'
-                    && selectedMarkerStyle.height === '14px'
-                    && selectedMarkerStyle.backgroundColor === selectedStatusStyle.color
-                    && selectedTimeStyle.color === selectedStatusStyle.color
-                    && selectedRow.querySelector('.session-time')?.tagName === 'SPAN';
+                    && selectedRow.querySelector('.session-time') === null
+                    && document.querySelector('.sidebar-section-head .session-count')?.textContent === String(grouped().length);
                   const headerAlignment = Math.abs(centerY(headerIconRect) - centerY(headerTitleRect)) <= 1
                     && Math.abs(centerY(headerStateRect) - centerY(headerTitleRect)) <= 1;
-                  const notionVisual = getComputedStyle(document.documentElement).colorScheme === 'light'
-                    && getComputedStyle(document.body).backgroundColor === 'rgb(246, 245, 244)'
-                    && getComputedStyle(sidebar).backgroundColor === 'rgb(246, 245, 244)'
-                    && getComputedStyle(conversation).backgroundColor === 'rgb(255, 255, 255)'
-                    && getComputedStyle(selectedRow).backgroundColor === 'rgb(233, 232, 228)'
-                    && getComputedStyle(document.querySelector('[data-send]')).backgroundColor === 'rgb(0, 117, 222)'
-                    && document.querySelector('.brand')?.textContent === 'workdpace';
-                  const markdownProbe = document.createElement('div');
-                  markdownProbe.innerHTML = renderMarkdown('**safe** [docs](https://example.com) https://openai.com <img src=x onerror=alert(1)> `https://code.example`');
-                  const markdownSafety = markdownProbe.querySelector('strong')?.textContent === 'safe'
-                    && markdownProbe.querySelector('a')?.getAttribute('href') === 'https://example.com'
-                    && markdownProbe.querySelector('a')?.textContent === 'docs'
-                    && markdownProbe.querySelectorAll('a').length === 2
-                    && markdownProbe.querySelector('img') === null
-                    && markdownProbe.querySelector('code a') === null;
+                  const solarizedVisual = getComputedStyle(document.documentElement).colorScheme === 'light'
+                    && getComputedStyle(document.body).backgroundColor === 'rgb(248, 243, 226)'
+                    && getComputedStyle(sidebar).backgroundColor === 'rgb(248, 243, 226)'
+                    && getComputedStyle(conversation).backgroundColor === 'rgb(253, 246, 227)'
+                    && getComputedStyle(selectedRow).backgroundColor === 'rgb(238, 232, 213)'
+                    && getComputedStyle(document.querySelector('[data-send]')).backgroundColor === 'rgb(38, 139, 210)'
+                    && document.querySelector('.brand')?.textContent === 'Agent Workspace';
+                  const newSessionButton = document.querySelector('[data-new]');
+                  const newSessionDiscoverable = newSessionButton?.querySelector('span:not(.kbd)')?.textContent === 'New session'
+                    && newSessionButton?.title === 'New session (⌘N)'
+                    && newSessionButton?.getAttribute('aria-keyshortcuts') === 'Meta+N'
+                    && newSessionButton?.getBoundingClientRect().width >= 90;
+                  const searchCollapsed = document.querySelector('[data-search]') === null;
+                  const blockedMutation = await fetch(`/api/create?cwd=${encodeURIComponent(state.cwd)}`);
+                  const bridgeSecurity = blockedMutation.status >= 400
+                    && targetQuery(item).includes('generation=');
+                  const staleGenerationKey = 'stale:session:generation';
+                  state.histories[staleGenerationKey] = {entries: []};
+                  state.drafts[staleGenerationKey] = 'must be pruned';
+                  await loadSessions();
+                  const generationIsolation = state.histories[staleGenerationKey] === undefined
+                    && state.drafts[staleGenerationKey] === undefined;
                   const claude = document.querySelector('.sidebar [data-provider-icon="claude"]');
                   const claudeSVG = claude?.querySelector('svg');
                   const claudePath = claudeSVG?.querySelector('path')?.getAttribute('d') || '';
@@ -1034,7 +853,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
                   codexProbe.innerHTML = providerIcon('codex');
                   const providerIdentity = claudeSVG?.getAttribute('viewBox') === '0 0 16 16'
                     && claudePath.startsWith('m3.127 10.604')
-                    && getComputedStyle(claude).color === 'rgb(215, 118, 85)'
+                    && getComputedStyle(claude).color === 'rgb(203, 75, 22)'
                     && document.querySelectorAll('.sidebar [data-provider-icon="claude"]').length === state.sessions.length
                     && codexProbe.querySelector('[data-provider-icon="codex"]') !== null;
 
@@ -1056,6 +875,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
                     && initialText.includes('ccw-history-first')
                     && initialText.includes('ccw-history-last')
                     && historyLateLayoutFollow;
+                  const terminalOutput = document.querySelector('[data-terminal-output]');
+                  const directCLI = terminalOutput?.textContent.includes('ccw-history-first') === true
+                    && terminalOutput?.textContent.includes('ccw-history-last') === true
+                    && document.querySelectorAll('.message').length === 0
+                    && document.querySelector('[data-history-count]')?.textContent === 'Live CLI';
                   lateLayoutProbe.remove();
                   jumpToLatest();
 
@@ -1077,7 +901,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
                   deleteItem?.click();
                   const correctDeleteTarget = state.confirm === item.id
                     && document.querySelector('[role="alertdialog"]') !== null;
-                  const perSessionMenu = explicitMenuTarget && correctDeleteTarget;
+                  const deleteScopeWarning = document.querySelector('[role="alertdialog"]')?.innerText.includes('entire tmux session') === true
+                    && document.querySelector('[role="alertdialog"]')?.innerText.includes('Project files are not deleted') === true;
+                  const perSessionMenu = explicitMenuTarget && correctDeleteTarget && deleteScopeWarning;
                   document.querySelector('[data-cancel]')?.click();
 
                   const pageSource = [...document.scripts].map(node => node.textContent).join('');
@@ -1100,6 +926,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
                   const sendRect = document.querySelector('[data-send]')?.getBoundingClientRect();
                   const composerAlignment = Math.abs(centerY(composerIconRect) - centerY(promptRect)) <= 1
                     && Math.abs(centerY(sendRect) - centerY(promptRect)) <= 1;
+                  const composerTopLineRemoved = getComputedStyle(document.querySelector('[data-composer]')?.parentElement).borderTopWidth === '0px';
                   const composerReady = prompt.getAttribute('aria-label') === 'Message Claude'
                     && document.querySelector('[data-send]')?.textContent.trim() === 'Send'
                     && state.drafts[identity(current())] === 'draft message'
@@ -1160,21 +987,27 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
                   const composerSendTransport = sentText.includes(marker)
                     && document.querySelector('[data-prompt]')?.value === ''
                     && state.drafts[identity(item)] === undefined;
-                  return {workbenchLayout, rowAlignment, headerAlignment, notionVisual, markdownSafety, providerIdentity, perSessionMenu, noGhostty, historyContract, historyLateLayoutFollow, historyClickPreservesFollow, historyErrorPreservesContent, historyTimerIsolation, historyScrollSafety, composerAlignment, composerReady, searchShortcut, imePreserved, controlShortcutPreserved, composerSendTransport};
+                  return {nativeDragRegion, workbenchLayout, rowAlignment, headerAlignment, solarizedVisual, newSessionDiscoverable, searchCollapsed, bridgeSecurity, generationIsolation, providerIdentity, perSessionMenu, noGhostty, historyContract, directCLI, historyLateLayoutFollow, historyClickPreservesFollow, historyErrorPreservesContent, historyTimerIsolation, historyScrollSafety, composerAlignment, composerTopLineRemoved, composerReady, searchShortcut, imePreserved, controlShortcutPreserved, composerSendTransport};
                 })()
                 """
-                webView.callAsyncJavaScript("return await \(script)", arguments: [:], in: nil, in: .page) { result in
+                let nativeWindowDrag = webView.superview?.subviews.first(where: { $0.identifier?.rawValue == "agent-workspace.window-drag" }).map { dragRegion in
+                    abs(dragRegion.frame.height - 44) < 0.5
+                        && dragRegion.frame.minX >= 72
+                        && abs(dragRegion.frame.maxY - (dragRegion.superview?.bounds.maxY ?? 0)) < 0.5
+                        && (dragRegion.superview?.bounds.maxX ?? 0) - dragRegion.frame.maxX >= 60
+                } ?? false
+                webView.callAsyncJavaScript("return await \(script)", arguments: ["nativeWindowDrag": nativeWindowDrag], in: nil, in: .page) { result in
                     switch result {
                     case .success(let value):
                         let checks = value as? [String: Any]
                         let required = [
-                            "workbenchLayout", "rowAlignment", "headerAlignment", "notionVisual", "markdownSafety", "providerIdentity", "perSessionMenu",
-                            "noGhostty", "historyContract", "historyLateLayoutFollow", "historyClickPreservesFollow", "historyErrorPreservesContent", "historyTimerIsolation", "historyScrollSafety", "composerAlignment", "composerReady",
+                            "nativeDragRegion", "workbenchLayout", "rowAlignment", "headerAlignment", "solarizedVisual", "newSessionDiscoverable", "searchCollapsed", "bridgeSecurity", "generationIsolation", "providerIdentity", "perSessionMenu",
+                            "noGhostty", "historyContract", "directCLI", "historyLateLayoutFollow", "historyClickPreservesFollow", "historyErrorPreservesContent", "historyTimerIsolation", "historyScrollSafety", "composerAlignment", "composerTopLineRemoved", "composerReady",
                             "searchShortcut", "imePreserved", "controlShortcutPreserved", "composerSendTransport",
                         ]
                         let passed = checks != nil && required.allSatisfy { checks?[$0] as? Bool == true }
                         if passed {
-                            print("PASS: workdpace Notion UI, full history, per-session menu, scroll safety, keyboard/IME, and WebView POST send transport")
+                            print("PASS: Agent Workspace Solarized CLI, native window drag, session controls, scroll safety, keyboard/IME, and WebView POST send transport")
                             NSApp.terminate(nil)
                             return
                         }
@@ -1244,11 +1077,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
         let menu = NSMenu()
 
         let appItem = NSMenuItem()
-        let appMenu = NSMenu(title: "workdpace")
-        appMenu.addItem(withTitle: "About workdpace", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let appMenu = NSMenu(title: "Agent Workspace")
+        appMenu.addItem(withTitle: "About Agent Workspace", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide workdpace", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit workdpace", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Hide Agent Workspace", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Quit Agent Workspace", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         menu.addItem(appItem)
 
@@ -1268,7 +1101,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDe
 }
 
 @main
-private enum WorkdpaceMain {
+private enum AgentWorkspaceMain {
     static func main() {
         let arguments = Array(CommandLine.arguments.dropFirst())
         if let iconIndex = arguments.firstIndex(of: "--write-icon"), iconIndex + 1 < arguments.count {
@@ -1298,11 +1131,11 @@ private enum WorkdpaceMain {
             do {
                 try backend.validateBridge()
                 try backend.validateSendTransport()
-                try backend.validateHistoryParser()
                 try backend.validateHistoryFallback()
+                try backend.validateLifecycleIsolation()
                 let demoBackend = TmuxBackend(defaultCwd: cwd)
                 try demoBackend.validateDemoIsolation()
-                print("PASS: workdpace bundled bridges, tmux send/full-history transport, incremental transcript parser, and read-only demo mode")
+                print("PASS: Agent Workspace bundled bridges, tmux send/full-history transport, lifecycle isolation, and read-only demo mode")
             } catch {
                 fputs("FAIL: \(error.localizedDescription)\n", stderr)
                 Darwin.exit(1)

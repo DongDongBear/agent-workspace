@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve workdpace. Keep changes focused, local-first, and easy to verify.
+Thanks for helping improve Agent Workspace. Keep changes focused, local-first, and easy to verify.
 
 ## Development setup
 
@@ -14,7 +14,7 @@ bash Tests/app.bash
 
 The project is intentionally small:
 
-- `Sources/Workdpace.swift` contains the AppKit host, local backend, transcript parser, and WebView bridge.
+- `Sources/AgentWorkspace.swift` contains the AppKit host, tmux backend, and WebView bridge.
 - `Resources/index.html` contains the interface.
 - `Resources/Bridge/` contains the bundled tmux session scripts.
 - `Tests/` contains isolated bridge and application checks.
@@ -32,7 +32,7 @@ The project is intentionally small:
 
 ## Test data and privacy
 
-Use synthetic tmux sessions and transcripts. Never commit real transcripts, credentials, tokens, private project paths, account details, or screenshots containing personal data. Redact diagnostic output before attaching it to an issue or pull request.
+Use synthetic tmux sessions and pane output. Never commit real conversation output, credentials, tokens, private project paths, account details, or screenshots containing personal data. Redact diagnostic output before attaching it to an issue or pull request.
 
 For security-sensitive reports, follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 

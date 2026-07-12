@@ -1,10 +1,10 @@
 # Security policy
 
-workdpace controls local tmux sessions and reads local Claude Code transcripts. Please treat security reports involving session targeting, command or message injection, transcript rendering, local file access, or the in-process WebView bridge as sensitive.
+Agent Workspace controls local tmux sessions and reads their pane scrollback. Please treat security reports involving session targeting, command or message injection, terminal rendering, local file access, or the in-process WebView bridge as sensitive.
 
 ## Supported versions
 
-workdpace is currently alpha software. Security fixes are made on the latest `main` revision; older revisions may not receive patches.
+Agent Workspace is currently alpha software. Security fixes are made on the latest `main` revision; older revisions may not receive patches.
 
 ## Report a vulnerability
 
@@ -18,14 +18,14 @@ Include:
 - Minimal reproduction steps and impact.
 - Redacted logs, if necessary.
 
-Never include credentials, tokens, private conversation text, unredacted home-directory paths, or project source in a report. A synthetic tmux session and synthetic transcript are strongly preferred.
+Never include credentials, tokens, private conversation text, unredacted home-directory paths, or project source in a report. A synthetic tmux session and synthetic pane output are strongly preferred.
 
 ## Security model
 
 - The app is local-only and contains no telemetry.
 - The WebView uses a non-persistent data store and an in-process URL scheme.
 - Session messages are transferred through a tmux buffer to a validated pane target.
-- The app reads Claude Code session metadata and transcripts but does not handle Claude authentication or Keychain credentials.
+- The app reads tmux process state and pane scrollback but does not read Claude transcripts or handle Claude authentication or Keychain credentials.
 - Deleting a session terminates the complete tmux session after confirmation.
 - Builds are ad-hoc signed and are not notarized by Apple.
 

@@ -30,8 +30,11 @@ _claude_pid(){
 
 G=$'\033[38;5;64m●\033[0m'; Y=$'\033[38;5;136m●\033[0m'
 FMT=$'#{session_name}\t#{session_activity}\t#{pane_pid}\t#{pane_current_path}\t#{pane_id}\t#{pane_title}'
-tmux list-sessions -F "$FMT" 2>/dev/null | while IFS=$'\t' read -r s act pp pcp pane title; do
+seen=$'\n'
+tmux list-panes -a -F "$FMT" 2>/dev/null | while IFS=$'\t' read -r s act pp pcp pane title; do
+  case "$seen" in *$'\n'"$s"$'\n'*) continue;; esac
   claude_pid=$(_claude_pid "$pp") || continue
+  seen+="$s"$'\n'
   cwd=$(_cwd "$pp"); [ -n "$cwd" ] || cwd="$pcp"
   case "$cwd" in "$HOME") reldir='~';; "$HOME"/*) reldir="~${cwd#$HOME}";; *) reldir=${cwd:-\?};; esac
   fb=$(printf %s "$title" | od -An -tu1 -N1 2>/dev/null | tr -dc 0-9)
