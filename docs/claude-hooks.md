@@ -1,13 +1,13 @@
 # Claude Code Hooks：Agent Workspace 实时会话渲染调研
 
-> 状态：已被 live-pane 方案取代。Agent Workspace 当前直接渲染 tmux scrollback，不安装 Hook，也不读取 Claude JSONL；以下内容仅保留为未来结构化历史模式的研究资料。
+> 状态：增量 JSONL tail 已实现，但没有安装 Hook。Agent Workspace 以 tmux 负责会话生命周期、精确 pane 输入和 fallback，以 Claude 已有 transcript 补齐完整历史与 block 级活动；以下 Hook 方案仅保留为未来降低轮询延迟的研究资料。
 
 调研日期：2026-07-12。目标是让 Hook 只承担“数据已变化”的通知职责，Claude JSONL 继续作为唯一事实源，不接管登录、不复制凭证，也不让 Hook 生成第二份会话记录。
 
 ## 结论
 
 1. 当前 Claude Code 有 30 个 Hook 事件。本机 `claude --version` 为 `2.1.207`，已支持 `MessageDisplay`；该事件在 `2.1.152` 加入。[官方 Hooks reference](https://code.claude.com/docs/en/hooks#hook-lifecycle) · [官方 CHANGELOG 2.1.152](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#21152)
-2. 官方明确说明：`transcript_path` 指向的会话文件是**异步写入**的，Hook 触发时可能还没有当前回合的最新消息；因此 Hook 触发后立即读取可能短暂落后。[Common input fields](https://code.claude.com/docs/en/hooks#common-input-fields) 本次实机问题已证明是长历史布局后失去贴底，而不是 JSONL 漏写，Hook 不能替代滚动状态修复。
+2. 官方明确说明：`transcript_path` 指向的会话文件是**异步写入**的，Hook 触发时可能还没有当前回合的最新消息；因此 Hook 触发后立即读取可能短暂落后。[Common input fields](https://code.claude.com/docs/en/hooks#common-input-fields) 本次实机问题证明 JSONL 会在 tmux pane 完全静止时继续增长；Hook 只能作为更快的失效提示，不能替代增量 tail、滚动状态和 tmux fallback。
 3. 没有逐 token Hook，也没有名为 `TranscriptAppend` 的专用事件。`MessageDisplay` 在交互模式下按“新完成的文本行批次”触发；短消息可能一次，长消息多次。纯工具调用、工具结果和用户输入不会触发它。[MessageDisplay](https://code.claude.com/docs/en/hooks#messagedisplay)
 4. Claude Code 可以在 `SessionStart` 返回绝对路径 `watchPaths`，随后由 `FileChanged` 在被监视文件实际变化时触发。对 Agent Workspace，最可靠的最小链路是：`SessionStart.watchPaths = [transcript_path]` → `FileChanged` → UI 重新 tail JSONL。[SessionStart output](https://code.claude.com/docs/en/hooks#sessionstart-decision-control) · [FileChanged](https://code.claude.com/docs/en/hooks#filechanged)
 5. `MessageDisplay` 可以作为更早的“Claude 正在输出”提示，但不应把 `delta` 直接写入持久会话模型。否则 UI 会拥有 JSONL 与 Hook delta 两个事实源，并且无法用 `message_id` 与 transcript 记录可靠关联。
@@ -241,4 +241,4 @@ Agent Workspace helper 应满足：
 
 ## 最终建议
 
-先实现 `SessionStart.watchPaths + FileChanged + incremental tailer`，这是最小、可解释、与 JSONL 唯一事实源一致的修复。随后添加 `MessageDisplay` 作为 working 状态与早到失效提示，再用 `Stop`/`StopFailure` 做最终校准；不要使用 `statusLine`，不要持久化 Hook `delta`，不要碰 Claude credentials。
+当前已完成无 Hook 的增量 tailer。只有在 1 秒轮询被实测证明不够时，再考虑 `SessionStart.watchPaths + FileChanged` 做失效提示，并用 `MessageDisplay`/`Stop` 做有界校准；不要使用 `statusLine`，不要持久化 Hook `delta`，不要碰 Claude credentials。

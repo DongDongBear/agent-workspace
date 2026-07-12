@@ -4,7 +4,7 @@ A calm, native macOS workspace for active Claude Code sessions running in tmux.
 
 ![Agent Workspace session workspace](docs/agent-workspace.png)
 
-Agent Workspace is a thin desktop view over Claude Code sessions that keep running in tmux. Search and switch sessions, see the live CLI from its exact pane, and send a prompt without replacing your terminal workflow. Closing or quitting the app never stops those sessions.
+Agent Workspace is a thin desktop view over Claude Code sessions that keep running in tmux. Search and switch sessions, follow their full CLI-style history, and send a prompt without replacing your terminal workflow. Closing or quitting the app never stops those sessions.
 
 The app uses AppKit for the shell and WKWebView for its small interface—there is no Electron runtime and no second terminal emulator.
 
@@ -14,13 +14,14 @@ The app uses AppKit for the shell and WKWebView for its small interface—there 
 
 - Finds active local Claude Code sessions running inside tmux.
 - Groups and searches sessions by project.
-- Renders the complete live tmux scrollback instead of reconstructing a second conversation UI.
+- Tails Claude's existing transcript incrementally so long tool runs remain visibly active even when the tmux screen is static.
+- Falls back to complete tmux scrollback when a transcript is unavailable.
 - Sends prompts to the exact tmux pane from the desktop composer.
 - Creates sessions and deletes them with confirmation.
 - Leaves every tmux session running when its window closes or the app quits.
 - Supports `⌘K` to search, `⌘N` to create, and `⌘R` to refresh.
 
-The right panel is the captured Claude CLI pane. tmux remains the terminal emulator, process owner, and source of truth; only the explicit per-session **Delete** action stops a session.
+The right panel stays one lightweight CLI-style text surface. tmux remains the process owner and the source of truth for session lifecycle, pane targeting, and input; the existing Claude transcript supplies read-only history and block-level activity. Only the explicit per-session **Delete** action stops a session.
 
 ## Requirements
 
@@ -59,7 +60,7 @@ To open Agent Workspace with a particular project as its starting directory:
 open -na "$HOME/Applications/Agent Workspace.app" --args "$PWD"
 ```
 
-Claude Code remains responsible for authentication and for any network requests made while processing prompts.
+Claude Code remains responsible for authentication, permission mode, and any network requests made while processing prompts. The public app's **New session** action does not force permission-bypass flags; personal launchers may opt into their own Claude settings.
 
 ## Test
 
@@ -68,13 +69,13 @@ bash Tests/sesslist.bash
 bash Tests/app.bash
 ```
 
-The app test builds an isolated bundle and exercises the session bridge, complete pane capture, message transport, native window drag region, and UI contract.
+The app test builds an isolated bundle and exercises the session bridge, a growing transcript over a static tmux pane, partial JSONL records, transcript replacement, complete pane fallback, message transport, native window drag region, and UI geometry contract.
 
 ## Privacy and safety
 
 Agent Workspace has no telemetry and does not operate a remote service. Its WebView uses a non-persistent data store and communicates with the native process through an in-process URL scheme rather than a local HTTP server.
 
-To display a session, the app reads local tmux state and pane scrollback. It does not upload that output, persist a second transcript copy, access the Keychain, read `~/.claude` transcripts, or read or change Claude credentials. See [SECURITY.md](SECURITY.md) for reporting security issues.
+To display a session, the app reads local tmux state and the active session's existing `~/.claude` JSONL transcript. It keeps only a bounded in-memory rendering cache and never uploads or copies the transcript. Structured transcript mode filters raw tool fields and private thinking text; when transcript data is unavailable, the tmux fallback shows exactly what is already visible in that pane. The app does not access the Keychain or read/change Claude credentials. See [SECURITY.md](SECURITY.md) for reporting security issues.
 
 Deleting a session runs the equivalent of `tmux kill-session` after confirmation. This stops the entire tmux session; it does not delete the project or Claude files.
 
@@ -83,8 +84,9 @@ Deleting a session runs the equivalent of `tmux kill-session` after confirmation
 - Only active local Claude Code sessions in tmux are supported.
 - Ended or archived sessions are not browsable.
 - Codex has a planned provider boundary but no working backend.
-- This is a live pane viewer with a prompt composer; tmux remains the terminal emulator.
+- Transcript updates are block-level rather than token-level; tmux pane output remains the fallback.
 - Messages are limited to 32 KB.
+- Transcripts larger than 64 MB fall back to the visible tmux pane to keep memory bounded.
 - Releases are ad-hoc signed and are not notarized by Apple.
 
 ## Contributing

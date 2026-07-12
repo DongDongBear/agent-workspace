@@ -77,4 +77,4 @@ SESSION=$(bash "$ROOT/Resources/Bridge/newsess.sh" "$FIXTURE")
 grep -Fq "new-session -d -s agent-workspace-2 -c $FIXTURE " "$LOG"
 grep -q 'exec claude$' "$LOG"
 
-printf '%s\n' 'PASS: bundled bridges find Claude sessions and start plain agent-workspace-N sessions'
+printf '%s\n' 'PASS: bundled bridges find Claude sessions and leave permission mode to Claude Code'

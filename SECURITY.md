@@ -1,6 +1,6 @@
 # Security policy
 
-Agent Workspace controls local tmux sessions and reads their pane scrollback. Please treat security reports involving session targeting, command or message injection, terminal rendering, local file access, or the in-process WebView bridge as sensitive.
+Agent Workspace controls local tmux sessions and reads their pane scrollback plus active Claude transcripts. Please treat security reports involving session targeting, command or message injection, transcript parsing, terminal rendering, local file access, or the in-process WebView bridge as sensitive.
 
 ## Supported versions
 
@@ -25,7 +25,9 @@ Never include credentials, tokens, private conversation text, unredacted home-di
 - The app is local-only and contains no telemetry.
 - The WebView uses a non-persistent data store and an in-process URL scheme.
 - Session messages are transferred through a tmux buffer to a validated pane target.
-- The app reads tmux process state and pane scrollback but does not read Claude transcripts or handle Claude authentication or Keychain credentials.
+- The app resolves an active transcript from Claude's PID metadata, restricts reads to regular files under `~/.claude/projects`, and tails it read-only in memory.
+- Transcript reads are chunked, individual records and files are size-limited, and the in-memory cache uses a small LRU; oversized sessions fall back to the visible tmux pane.
+- Structured transcript rendering filters raw tool fields and private thinking text. The tmux fallback may show tool output already visible in the terminal pane. The app does not handle Claude authentication or Keychain credentials.
 - Deleting a session terminates the complete tmux session after confirmation.
 - Builds are ad-hoc signed and are not notarized by Apple.
 

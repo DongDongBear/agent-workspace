@@ -9,7 +9,7 @@ if rg -q 'Open in Ghostty|data-open|function openSession\(' "$ROOT/Resources/ind
   exit 1
 fi
 if rg -q -- '--dangerously-skip-permissions|--settings|ultracode' "$ROOT/Resources/Bridge"; then
-  printf '%s\n' 'FAIL: bundled session launchers must use Claude Code defaults' >&2
+  printf '%s\n' 'FAIL: the public app must not make permission bypass its default' >&2
   exit 1
 fi
 
